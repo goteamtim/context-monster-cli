@@ -1,0 +1,12 @@
+{
+  "name": "list_directory",
+  "description": "Lists the immediate contents of a directory, labelling each entry as a file or directory.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "path": { "type": "string", "description": "The directory path to list." }
+    },
+    "required": ["path"]
+  },
+  "command": "./list"
+}

@@ -1,0 +1,19 @@
+{
+  "name": "wiki_search",
+  "description": "Searches a local markdown wiki. Reads the wiki's index.md, finds pages relevant to the query by keyword scoring, and returns their full content in a single call. Use this before answering questions in a wiki-backed persona.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "wiki_dir": {
+        "type": "string",
+        "description": "Path to the wiki directory. Must contain an index.md file."
+      },
+      "query": {
+        "type": "string",
+        "description": "The question or topic to search for. Split into keywords and matched against page titles and summaries."
+      }
+    },
+    "required": ["wiki_dir", "query"]
+  },
+  "command": "./search"
+}

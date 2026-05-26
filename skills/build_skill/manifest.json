@@ -1,0 +1,16 @@
+{
+  "name": "build_skill",
+  "description": "Scaffolds a new skill by creating its directory, manifest.json, and implementation file. For Go skills, also compiles the binary. After creation the agent must be restarted to pick up the new skill. IMPORTANT: code passed for any language must read os.Args[1] (Go/Bash) or sys.argv[1] (Python) as a JSON string, parse the parameters, perform its work, and print the result to stdout. The 'parameters' field must be a valid JSON object string matching the Ollama tool schema, e.g.: {\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\",\"description\":\"The path.\"}},\"required\":[\"path\"]}",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "name":        { "type": "string", "description": "Skill name — used as the directory name, binary name, and manifest name. Use snake_case." },
+      "description": { "type": "string", "description": "Human-readable description of what the skill does. Also used in the manifest." },
+      "parameters":  { "type": "string", "description": "The full parameters schema as a JSON string (the object that goes in manifest 'parameters' field)." },
+      "language":    { "type": "string", "description": "Implementation language: 'go', 'python', or 'bash'." },
+      "code":        { "type": "string", "description": "Complete source code for the skill implementation." }
+    },
+    "required": ["name", "description", "parameters", "language", "code"]
+  },
+  "command": "./build"
+}

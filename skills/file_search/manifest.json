@@ -1,0 +1,13 @@
+{
+  "name": "file_search",
+  "description": "Searches a directory and its subdirectories for files matching a given extension suffix.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "dir": { "type": "string", "description": "The root directory path to begin searching from." },
+      "ext": { "type": "string", "description": "The file extension to filter by (e.g. '.go', '.py', '.json')." }
+    },
+    "required": ["dir", "ext"]
+  },
+  "command": "./search"
+}
