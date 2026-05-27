@@ -47,8 +47,10 @@ type ToolCall struct {
 
 // Message is a single entry in the conversation history.
 // ToolCalls is populated only on assistant messages that invoke tools.
+// Name identifies the tool that produced a result; required on tool-role messages.
 type Message struct {
 	Role      string     `json:"role"`
+	Name      string     `json:"name,omitempty"`
 	Content   string     `json:"content"`
 	ToolCalls []ToolCall `json:"tool_calls,omitempty"`
 }

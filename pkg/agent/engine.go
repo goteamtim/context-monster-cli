@@ -135,6 +135,7 @@ func (a *Agent) think(ctx context.Context) (string, error) {
 
 			a.history = append(a.history, ollama.Message{
 				Role:    "tool",
+				Name:    name,
 				Content: result,
 			})
 		}
@@ -160,5 +161,5 @@ func printStatus(msg string) {
 
 // clearStatus overwrites the current status line on stderr.
 func clearStatus() {
-	fmt.Fprint(os.Stderr, "\r                              \r")
+	fmt.Fprint(os.Stderr, "\r                                                            \r")
 }

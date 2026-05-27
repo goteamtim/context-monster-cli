@@ -20,10 +20,7 @@ git clone <repo-url> context-monster-cli
 cd context-monster-cli
 
 # 2. Compile the bundled skill binaries (one-time)
-cd skills/file_search   && go build -o search search.go && cd ../..
-cd skills/read_file     && go build -o read   read.go   && cd ../..
-cd skills/list_directory && go build -o list  list.go   && cd ../..
-
+make skills
 # 3. Run the agent
 go run ./cmd/agent
 ```
@@ -64,6 +61,7 @@ context-monster-cli/
 │   ├── wiki_search/         # Search a local markdown wiki (index.md + pages)
 │   └── running_coach/       # Example wiki-backed standalone persona
 ├── go.mod
+├── Makefile             # `make skills` builds all bundled skill binaries
 └── README.md
 ```
 

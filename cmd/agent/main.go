@@ -58,7 +58,7 @@ func main() {
 			}
 		}
 
-		fmt.Fprintf(os.Stderr, "# Alias hint: alias %s='context-monster-cli --skill %s'\n\n", *skillName, *skillName)
+		fmt.Fprintf(os.Stderr, "# Alias hint: alias %s='%s --skill %s'\n\n", *skillName, os.Args[0], *skillName)
 		fmt.Printf("Running as persona: %s\n", *skillName)
 		if len(activeSkills) > 0 {
 			names := make([]string, len(activeSkills))
@@ -99,4 +99,3 @@ func joinStrings(ss []string, sep string) string {
 	}
 	return result
 }
-

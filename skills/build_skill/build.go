@@ -47,15 +47,18 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Resolve skills dir relative to the binary's location so it works regardless
-	// of where the agent is invoked from.
-	exe, err := os.Executable()
-	if err != nil {
-		fmt.Printf("Error resolving executable path: %v\n", err)
-		os.Exit(1)
+	// Prefer the env var injected by the agent (works correctly under go run).
+	// Fall back to resolving from the binary path for direct invocations.
+	skillsRoot := os.Getenv("CM_SKILLS_DIR")
+	if skillsRoot == "" {
+		exe, err := os.Executable()
+		if err != nil {
+			fmt.Printf("Error resolving executable path: %v\n", err)
+			os.Exit(1)
+		}
+		// skills/build_skill/build  ->  skills/<name>
+		skillsRoot = filepath.Dir(filepath.Dir(exe))
 	}
-	// skills/build_skill/build  ->  skills/<name>
-	skillsRoot := filepath.Dir(filepath.Dir(exe))
 	skillDir := filepath.Join(skillsRoot, args.Name)
 
 	if err := os.MkdirAll(skillDir, 0755); err != nil {

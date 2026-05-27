@@ -82,6 +82,9 @@ func Execute(skill Skill, argsJSON json.RawMessage) (string, error) {
 	cmd := exec.CommandContext(ctx, binary, cmdArgs...)
 	// Do not set cmd.Dir — skills inherit the agent's working directory so that
 	// relative paths in tool arguments resolve correctly from the user's CWD.
+	// Inject the skills root so meta-skills like build_skill can locate it even
+	// under go run, where os.Executable() returns a temp path.
+	cmd.Env = append(os.Environ(), fmt.Sprintf("CM_SKILLS_DIR=%s", filepath.Dir(skill.Dir)))
 
 	out, err := cmd.Output()
 	if err != nil {

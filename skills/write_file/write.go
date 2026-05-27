@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 )
 
 type WriteArgs struct {
@@ -32,6 +33,11 @@ func main() {
 	// Check if file exists and guard against unintentional overwrites.
 	if _, err := os.Stat(args.Path); err == nil && !args.Overwrite {
 		fmt.Printf("Error: file %q already exists. Pass overwrite: true to replace it.\n", args.Path)
+		os.Exit(1)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(args.Path), 0755); err != nil {
+		fmt.Printf("Error creating directories for %q: %v\n", args.Path, err)
 		os.Exit(1)
 	}
 
