@@ -80,6 +80,8 @@ context-monster-cli/
 
 Create a subdirectory under `skills/` with two files:
 
+For agent-generated implementations, use the contract and prompt template in `skills/SKILL_BUILDER.md`.
+
 **`skills/my_skill/manifest.json`**
 ```json
 {
