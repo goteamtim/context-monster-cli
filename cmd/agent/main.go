@@ -7,6 +7,7 @@ import (
 
 	"context-monster-cli/pkg/agent"
 	"context-monster-cli/pkg/ollama"
+	"context-monster-cli/pkg/personas"
 	"context-monster-cli/pkg/skills"
 )
 
@@ -17,7 +18,8 @@ const defaultSystemPrompt = "You are a helpful assistant with access to local to
 func main() {
 	model := flag.String("model", "qwen3.5:4b", "Ollama model to use")
 	skillsDir := flag.String("skills-dir", "./skills", "Directory containing skill subdirectories")
-	skillName := flag.String("skill", "", "Run a standalone persona skill by name")
+	personasDir := flag.String("personas-dir", "./personas", "Directory containing persona subdirectories")
+	personaName := flag.String("persona", "", "Run a named persona by name")
 	debug := flag.Bool("debug", false, "Print raw Ollama response details to stderr")
 	flag.Parse()
 
@@ -27,24 +29,27 @@ func main() {
 		allSkills = nil
 	}
 
+	allPersonas, err := personas.Load(*personasDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not load personas from %q: %v\n", *personasDir, err)
+		allPersonas = nil
+	}
+
 	var (
 		activeSkills []skills.Skill
 		systemPrompt string
+		opts         *ollama.Options
 	)
 
-	if *skillName != "" {
-		// Standalone persona mode.
-		persona, found := skills.FindByName(allSkills, *skillName)
+	if *personaName != "" {
+		// Persona mode.
+		p, found := personas.FindByName(allPersonas, *personaName)
 		if !found {
-			fmt.Fprintf(os.Stderr, "Error: no skill named %q found in %s\n", *skillName, *skillsDir)
-			os.Exit(1)
-		}
-		if persona.Manifest.Standalone == nil {
-			fmt.Fprintf(os.Stderr, "Error: skill %q does not have a 'standalone' block in its manifest\n", *skillName)
+			fmt.Fprintf(os.Stderr, "Error: no persona named %q found in %s\n", *personaName, *personasDir)
 			os.Exit(1)
 		}
 
-		cfg := persona.Manifest.Standalone
+		cfg := p.Manifest
 		systemPrompt = cfg.SystemPrompt
 
 		// Filter allSkills down to the curated list declared by the persona.
@@ -58,8 +63,21 @@ func main() {
 			}
 		}
 
-		fmt.Fprintf(os.Stderr, "# Alias hint: alias %s='%s --skill %s'\n\n", *skillName, os.Args[0], *skillName)
-		fmt.Printf("Running as persona: %s\n", *skillName)
+		// Override model if persona specifies one.
+		if cfg.Model != "" {
+			*model = cfg.Model
+		}
+
+		// Build Ollama options from persona if set.
+		if cfg.ContextWindow > 0 || cfg.MaxTokens > 0 {
+			opts = &ollama.Options{
+				NumCtx:     cfg.ContextWindow,
+				NumPredict: cfg.MaxTokens,
+			}
+		}
+
+		fmt.Fprintf(os.Stderr, "# Alias hint: alias %s='%s --persona %s'\n\n", *personaName, os.Args[0], *personaName)
+		fmt.Printf("Running as persona: %s\n", *personaName)
 		if len(activeSkills) > 0 {
 			names := make([]string, len(activeSkills))
 			for i, s := range activeSkills {
@@ -84,9 +102,8 @@ func main() {
 		}
 	}
 
-	client := ollama.New("http://localhost:11434", *model)
-	a := agent.New(client, activeSkills, systemPrompt, *debug)
-	a.Run()
+	client := ollama.New("http://localhost:11434", *model, opts)
+	agent.New(client, activeSkills, systemPrompt, *debug).Run()
 }
 
 func joinStrings(ss []string, sep string) string {
