@@ -47,7 +47,7 @@ When the chat opens, use slash commands locally instead of asking the model to i
 
 ```bash
 go run ./cmd/agent --model qwen3.5:7b --skills-dir ./skills
-go run ./cmd/agent --persona running_coach
+go run ./cmd/agent --persona dev_journal
 ```
 
 ## Project Structure
@@ -74,7 +74,7 @@ context-monster-cli/
 │   ├── build_skill/         # Meta-skill: scaffolds new skills at runtime
 │   └── wiki_search/         # Search a local markdown wiki (index.md + pages)
 ├── personas/
-│   └── running_coach/       # Example wiki-backed persona
+│   └── dev_journal/         # Example wiki-backed persona
 ├── go.mod
 ├── Makefile             # `make skills` builds all bundled skill binaries
 └── README.md
@@ -93,7 +93,7 @@ context-monster-cli/
 
 | Persona | Model | Description |
 |---|---|---|
-| `running_coach` | `qwen3:7b` | Running coach with a persistent wiki |
+| `dev_journal` | `qwen3.5:9b` | Engineering journal with a persistent wiki |
 
 ## Adding Your Own Skill
 
@@ -156,13 +156,13 @@ Create a subdirectory under `personas/` with a `persona.json`:
 | `tools` | yes | List of skill names the persona can call |
 
 ```bash
-go run ./cmd/agent --persona running_coach
+go run ./cmd/agent --persona dev_journal
 ```
 
 A shell alias hint is printed to stderr on startup:
 
 ```
-# Alias hint: alias running_coach='context-monster-cli --persona running_coach'
+# Alias hint: alias dev_journal='context-monster-cli --persona dev_journal'
 ```
 
 ### Wiki-Backed Personas
@@ -192,11 +192,11 @@ to save it. When the user agrees:
    Use overwrite=true to replace the existing index.md.
 ```
 
-**`personas/running_coach/persona.json`** (abbreviated)
+**`personas/dev_journal/persona.json`** (abbreviated)
 ```json
 {
-  "name": "running_coach",
-  "system_prompt": "You are an expert running coach...\n\n## Wiki\n\nYou maintain a persistent knowledge wiki at personas/running_coach/wiki/. Before answering any running question, call wiki_search...",
+  "name": "dev_journal",
+  "system_prompt": "You are a quiet, sharp engineering journal...\n\n## Wiki\n\nYou maintain a persistent journal wiki at personas/dev_journal/wiki/. Before responding to questions about past work, call wiki_search...",
   "tools": ["wiki_search", "read_file", "write_file", "file_search"]
 }
 ```
@@ -205,21 +205,23 @@ The wiki directory lives inside the persona's directory:
 
 ```
 personas/
-└── running_coach/
+└── dev_journal/
     ├── persona.json
     └── wiki/
         ├── index.md        ← catalog of all pages (LLM maintains)
-        └── pages/          ← one markdown file per topic (LLM writes)
+        └── decisions/      ← architectural and design choices
+        └── sessions/       ← dated notes on what was worked on
+        └── problems/       ← bugs, blockers, and resolutions
 ```
 
 The `index.md` uses simple category headers with one link per line:
 
 ```markdown
-## Training Plans
-- [12-Week Marathon Plan](pages/marathon-12-week.md) — beginner-friendly base-building plan
+## Decisions
+- [Chose SQLite over Postgres](decisions/chose-sqlite-over-postgres.md) — lightweight, no server needed for this use case
 
-## Injury Prevention
-- [IT Band Syndrome](pages/it-band.md) — causes, treatment, and return-to-run protocol
+## Problems
+- [Scanner blocking on large input](problems/scanner-large-input.md) — switched to bufio.Reader with a larger buffer
 ```
 
 `wiki_search` parses these lines, scores them against your query by keyword match, and returns the top 5 pages' full content in a single tool call. As the wiki grows, answers get more grounded — the model cites its own prior work rather than improvising.
