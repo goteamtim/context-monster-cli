@@ -1,6 +1,20 @@
 package agent
 
-import "strings"
+import (
+	"regexp"
+	"strings"
+)
+
+// thinkRe matches one or more <think>…</think> blocks, including newlines,
+// as produced by qwen3 reasoning models when Ollama embeds thinking inline.
+var thinkRe = regexp.MustCompile(`(?s)<think>.*?</think>`)
+
+// stripThinking removes embedded chain-of-thought blocks and returns the
+// visible response text. Returns an empty string if nothing remains.
+func stripThinking(content string) string {
+	stripped := thinkRe.ReplaceAllString(content, "")
+	return strings.TrimSpace(stripped)
+}
 
 // parseSlashCommand splits a leading slash command into its name and args.
 // It returns ok=false for non-command input.

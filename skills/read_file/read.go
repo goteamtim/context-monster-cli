@@ -12,19 +12,19 @@ type ReadArgs struct {
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Println("Error: Missing JSON argument payload.")
+		fmt.Fprintln(os.Stderr, "Error: missing JSON argument payload")
 		os.Exit(1)
 	}
 
 	var args ReadArgs
 	if err := json.Unmarshal([]byte(os.Args[1]), &args); err != nil {
-		fmt.Printf("Error parsing arguments: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error parsing arguments: %v\n", err)
 		os.Exit(1)
 	}
 
 	data, err := os.ReadFile(args.Path)
 	if err != nil {
-		fmt.Printf("Error reading file %q: %v\n", args.Path, err)
+		fmt.Fprintf(os.Stderr, "Error reading file %q: %v\n", args.Path, err)
 		os.Exit(1)
 	}
 

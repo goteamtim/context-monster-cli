@@ -85,3 +85,27 @@ func captureStdout(t *testing.T, fn func()) string {
 
 	return <-outputCh
 }
+
+func TestStripThinking(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{name: "no thinking block", input: "Hello!", want: "Hello!"},
+		{name: "only thinking block", input: "<think>reasoning</think>", want: ""},
+		{name: "thinking then reply", input: "<think>\nsome reasoning\n</think>\nHello!", want: "Hello!"},
+		{name: "multiple blocks", input: "<think>a</think> middle <think>b</think> end", want: "middle  end"},
+		{name: "empty string", input: "", want: ""},
+		{name: "whitespace after strip", input: "<think>x</think>   \n   ", want: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := stripThinking(tt.input)
+			if got != tt.want {
+				t.Fatalf("stripThinking(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}

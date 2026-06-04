@@ -146,9 +146,14 @@ func (a *Agent) think(ctx context.Context) (string, error) {
 
 		msg := resp.Message
 
+		// Extract visible content: prefer the dedicated Thinking field (newer
+		// Ollama builds), then fall back to stripping inline <think>…</think>
+		// blocks that older builds embed directly in Content.
+		visible := stripThinking(msg.Content)
+
 		if a.verbose {
-			fmt.Fprintf(os.Stderr, "[debug] role=%q content=%q tool_calls=%d\n",
-				msg.Role, msg.Content, len(msg.ToolCalls))
+			fmt.Fprintf(os.Stderr, "[debug] role=%q content=%q thinking=%q tool_calls=%d\n",
+				msg.Role, visible, msg.Thinking, len(msg.ToolCalls))
 			for i, tc := range msg.ToolCalls {
 				fmt.Fprintf(os.Stderr, "[debug]   tool_call[%d] name=%q args=%s\n",
 					i, tc.Function.Name, tc.Function.Arguments)
@@ -157,17 +162,23 @@ func (a *Agent) think(ctx context.Context) (string, error) {
 
 		// No tool calls — this is the final text reply.
 		if len(msg.ToolCalls) == 0 {
+			if visible == "" {
+				// The model produced only reasoning tokens and no visible text.
+				// Return a fallback so the REPL always prints something useful.
+				return "(no response — the model may still be warming up or the prompt produced only internal reasoning; try rephrasing)", nil
+			}
 			a.history = append(a.history, ollama.Message{
 				Role:    "assistant",
-				Content: msg.Content,
+				Content: visible,
 			})
-			return msg.Content, nil
+			return visible, nil
 		}
 
 		// Append the assistant's tool-call turn to history.
+		// Omit Thinking — it is internal reasoning and wastes context tokens.
 		a.history = append(a.history, ollama.Message{
 			Role:      "assistant",
-			Content:   msg.Content,
+			Content:   visible,
 			ToolCalls: msg.ToolCalls,
 		})
 

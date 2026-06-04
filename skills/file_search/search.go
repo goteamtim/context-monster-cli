@@ -15,13 +15,13 @@ type SearchArgs struct {
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Println("Error: Missing JSON argument payload parameter.")
+		fmt.Fprintln(os.Stderr, "Error: missing JSON argument payload")
 		os.Exit(1)
 	}
 
 	var args SearchArgs
 	if err := json.Unmarshal([]byte(os.Args[1]), &args); err != nil {
-		fmt.Printf("Error parsing execution arguments: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error parsing execution arguments: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -45,7 +45,7 @@ func main() {
 	})
 
 	if err != nil {
-		fmt.Printf("Error searching directory: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error searching directory: %v\n", err)
 		os.Exit(1)
 	}
 

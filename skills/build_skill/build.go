@@ -26,24 +26,24 @@ type manifest struct {
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Println("Error: missing JSON argument payload.")
+		fmt.Fprintln(os.Stderr, "Error: missing JSON argument payload.")
 		os.Exit(1)
 	}
 
 	var args BuildArgs
 	if err := json.Unmarshal([]byte(os.Args[1]), &args); err != nil {
-		fmt.Printf("Error parsing arguments: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error parsing arguments: %v\n", err)
 		os.Exit(1)
 	}
 
 	if args.Name == "" || args.Language == "" || args.Code == "" {
-		fmt.Println("Error: name, language, and code are required.")
+		fmt.Fprintln(os.Stderr, "Error: name, language, and code are required.")
 		os.Exit(1)
 	}
 
 	// Validate that parameters is valid JSON before writing it into the manifest.
 	if !json.Valid([]byte(args.Parameters)) {
-		fmt.Printf("Error: 'parameters' is not valid JSON: %s\n", args.Parameters)
+		fmt.Fprintf(os.Stderr, "Error: 'parameters' is not valid JSON: %s\n", args.Parameters)
 		os.Exit(1)
 	}
 
@@ -53,7 +53,7 @@ func main() {
 	if skillsRoot == "" {
 		exe, err := os.Executable()
 		if err != nil {
-			fmt.Printf("Error resolving executable path: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Error resolving executable path: %v\n", err)
 			os.Exit(1)
 		}
 		// skills/build_skill/build  ->  skills/<name>
@@ -62,7 +62,7 @@ func main() {
 	skillDir := filepath.Join(skillsRoot, args.Name)
 
 	if err := os.MkdirAll(skillDir, 0755); err != nil {
-		fmt.Printf("Error creating skill directory %q: %v\n", skillDir, err)
+		fmt.Fprintf(os.Stderr, "Error creating skill directory %q: %v\n", skillDir, err)
 		os.Exit(1)
 	}
 
@@ -79,7 +79,7 @@ func main() {
 		command = "bash run.sh"
 		sourceFile = "run.sh"
 	default:
-		fmt.Printf("Error: unsupported language %q (supported: go, python, bash)\n", args.Language)
+		fmt.Fprintf(os.Stderr, "Error: unsupported language %q (supported: go, python, bash)\n", args.Language)
 		os.Exit(1)
 	}
 
@@ -92,19 +92,19 @@ func main() {
 	}
 	manifestData, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
-		fmt.Printf("Error serialising manifest: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error serialising manifest: %v\n", err)
 		os.Exit(1)
 	}
 	manifestPath := filepath.Join(skillDir, "manifest.json")
 	if err := os.WriteFile(manifestPath, manifestData, 0644); err != nil {
-		fmt.Printf("Error writing manifest: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error writing manifest: %v\n", err)
 		os.Exit(1)
 	}
 
 	// Write source file.
 	sourcePath := filepath.Join(skillDir, sourceFile)
 	if err := os.WriteFile(sourcePath, []byte(args.Code), 0644); err != nil {
-		fmt.Printf("Error writing source file: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error writing source file: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -117,7 +117,7 @@ func main() {
 		cmd.Dir = skillDir
 		out, buildErr := cmd.CombinedOutput()
 		if buildErr != nil {
-			fmt.Printf("Skill files written but compilation failed:\n%s\nFix the code and run:\n  cd %s && go build -o %s main.go\n",
+			fmt.Fprintf(os.Stderr, "Skill files written but compilation failed:\n%s\nFix the code and run:\n  cd %s && go build -o %s main.go\n",
 				string(out), skillDir, args.Name)
 			os.Exit(1)
 		}
@@ -125,7 +125,7 @@ func main() {
 
 	case "bash":
 		if err := os.Chmod(sourcePath, 0755); err != nil {
-			fmt.Printf("Warning: could not chmod run.sh: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Warning: could not chmod run.sh: %v\n", err)
 		}
 		fmt.Printf("Skill %q created at %s\n", args.Name, skillDir)
 
