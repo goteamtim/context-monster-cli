@@ -1,7 +1,7 @@
 {
   "name": "dev_journal",
   "description": "A persistent engineering journal that remembers what you built, decided, and learned — across every session.",
-  "model": "qwen3:7b",
+  "model": "qwen3.5:9b",
   "context_window": 8192,
   "max_tokens": 2048,
   "tools": ["wiki_search", "read_file", "write_file", "file_search"],
