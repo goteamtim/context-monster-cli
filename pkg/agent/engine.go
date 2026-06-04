@@ -13,11 +13,12 @@ import (
 
 // Agent orchestrates the REPL loop and multi-turn tool-calling conversation.
 type Agent struct {
-	client  *ollama.Client
-	skills  []skills.Skill
-	history []ollama.Message
-	tools   []ollama.Tool
-	verbose bool
+	client       *ollama.Client
+	skills       []skills.Skill
+	systemPrompt string
+	history      []ollama.Message
+	tools        []ollama.Tool
+	verbose      bool
 }
 
 // New creates an Agent wired with the given Ollama client and loaded skills.
@@ -29,10 +30,11 @@ func New(client *ollama.Client, loadedSkills []skills.Skill, systemPrompt string
 	}
 
 	return &Agent{
-		client:  client,
-		skills:  loadedSkills,
-		tools:   tools,
-		verbose: verbose,
+		client:       client,
+		skills:       loadedSkills,
+		systemPrompt: systemPrompt,
+		tools:        tools,
+		verbose:      verbose,
 		history: []ollama.Message{
 			{Role: "system", Content: systemPrompt},
 		},
@@ -43,7 +45,7 @@ func New(client *ollama.Client, loadedSkills []skills.Skill, systemPrompt string
 // multi-turn conversation, and writes assistant replies to stdout.
 func (a *Agent) Run() {
 	scanner := bufio.NewScanner(os.Stdin)
-	fmt.Println("Context Monster ready. Type your message (Ctrl+C or Ctrl+D to quit).")
+	fmt.Println("Context Monster ready. Type your message, or /help for commands.")
 	fmt.Println()
 
 	for {
@@ -55,6 +57,14 @@ func (a *Agent) Run() {
 
 		input := strings.TrimSpace(scanner.Text())
 		if input == "" {
+			continue
+		}
+
+		if handled, keepRunning := a.handleSlashCommand(input); handled {
+			if !keepRunning {
+				fmt.Println("Bye.")
+				break
+			}
 			continue
 		}
 
@@ -72,6 +82,52 @@ func (a *Agent) Run() {
 		}
 
 		fmt.Printf("\nAssistant: %s\n\n", reply)
+	}
+}
+
+func (a *Agent) handleSlashCommand(input string) (handled bool, keepRunning bool) {
+	name, args, ok := parseSlashCommand(input)
+	if !ok {
+		return false, true
+	}
+
+	switch name {
+	case "exit", "quit":
+		return true, false
+	case "help":
+		fmt.Println("Commands:")
+		fmt.Println("  /help   Show this help")
+		fmt.Println("  /tools  List available tools")
+		fmt.Println("  /clear  Reset the current chat")
+		fmt.Println("  /exit   Leave the chat")
+		fmt.Println("  /quit   Alias for /exit")
+		fmt.Println()
+		fmt.Println("Any other message is sent to the model as plain chat.")
+		return true, true
+	case "clear":
+		a.history = []ollama.Message{{Role: "system", Content: a.systemPrompt}}
+		fmt.Println("Chat cleared.")
+		return true, true
+	case "tools":
+		if len(a.skills) == 0 {
+			fmt.Println("No tools available.")
+			return true, true
+		}
+
+		names := make([]string, len(a.skills))
+		for i, skill := range a.skills {
+			names[i] = skill.Manifest.Name
+		}
+		fmt.Printf("Tools: %s\n", strings.Join(names, ", "))
+		return true, true
+	default:
+		if args != "" {
+			fmt.Printf("Unknown command: /%s %s\n", name, args)
+		} else {
+			fmt.Printf("Unknown command: /%s\n", name)
+		}
+		fmt.Println("Type /help for available commands.")
+		return true, true
 	}
 }
 

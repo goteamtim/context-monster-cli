@@ -25,6 +25,16 @@ make skills
 go run ./cmd/agent
 ```
 
+When the chat opens, use slash commands locally instead of asking the model to interpret control input:
+
+| Command | Description |
+|---|---|
+| `/help` | Show the available local commands |
+| `/tools` | List the tools available in the current mode or persona |
+| `/clear` | Reset the current chat back to the system prompt |
+| `/exit` | Leave the chat immediately |
+| `/quit` | Alias for `/exit` |
+
 ## Flags
 
 | Flag | Default | Description |
