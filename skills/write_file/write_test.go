@@ -86,3 +86,44 @@ func TestRun_errorMessageNotEmpty(t *testing.T) {
 		t.Fatal("expected a non-empty error message so the agent can report it")
 	}
 }
+
+func TestRun_append(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "out.txt")
+	_ = os.WriteFile(path, []byte("line1\n"), 0644)
+
+	_, code := run(WriteArgs{Path: path, Content: "line2\n", Append: true})
+	if code != 0 {
+		t.Fatal("expected append to succeed")
+	}
+	data, _ := os.ReadFile(path)
+	if string(data) != "line1\nline2\n" {
+		t.Fatalf("unexpected content after append: %q", string(data))
+	}
+}
+
+func TestRun_appendCreatesFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "new.txt")
+
+	_, code := run(WriteArgs{Path: path, Content: "hello", Append: true})
+	if code != 0 {
+		t.Fatal("expected append to create file when it doesn't exist")
+	}
+	data, _ := os.ReadFile(path)
+	if string(data) != "hello" {
+		t.Fatalf("unexpected content: %q", string(data))
+	}
+}
+
+func TestRun_appendDoesNotRequireOverwrite(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "out.txt")
+	_ = os.WriteFile(path, []byte("original\n"), 0644)
+
+	// append: true should succeed even without overwrite: true
+	_, code := run(WriteArgs{Path: path, Content: "appended\n", Append: true})
+	if code != 0 {
+		t.Fatal("append should not require overwrite: true")
+	}
+}

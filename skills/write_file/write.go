@@ -11,6 +11,7 @@ type WriteArgs struct {
 	Path      string `json:"path"`
 	Content   string `json:"content"`
 	Overwrite bool   `json:"overwrite"`
+	Append    bool   `json:"append"`
 }
 
 // run performs the write and returns a message and an exit code.
@@ -20,13 +21,27 @@ func run(args WriteArgs) (string, int) {
 		return "path is required", 1
 	}
 
+	if err := os.MkdirAll(filepath.Dir(args.Path), 0755); err != nil {
+		return fmt.Sprintf("creating directories for %q: %v", args.Path, err), 1
+	}
+
+	// Append mode: open with O_APPEND|O_CREATE, never touches existing content.
+	if args.Append {
+		f, err := os.OpenFile(args.Path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			return fmt.Sprintf("opening file %q for append: %v", args.Path, err), 1
+		}
+		defer f.Close()
+		n, err := f.WriteString(args.Content)
+		if err != nil {
+			return fmt.Sprintf("appending to file %q: %v", args.Path, err), 1
+		}
+		return fmt.Sprintf("Successfully appended %d bytes to %q.", n, args.Path), 0
+	}
+
 	// Guard against unintentional overwrites.
 	if _, err := os.Stat(args.Path); err == nil && !args.Overwrite {
 		return fmt.Sprintf("file %q already exists. Pass overwrite: true to replace it.", args.Path), 1
-	}
-
-	if err := os.MkdirAll(filepath.Dir(args.Path), 0755); err != nil {
-		return fmt.Sprintf("creating directories for %q: %v", args.Path, err), 1
 	}
 
 	if err := os.WriteFile(args.Path, []byte(args.Content), 0644); err != nil {

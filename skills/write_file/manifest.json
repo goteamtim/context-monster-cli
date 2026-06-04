@@ -1,12 +1,13 @@
 {
   "name": "write_file",
-  "description": "Writes text content to a file. If the file already exists, you must explicitly pass overwrite: true to replace it — otherwise the skill will refuse and return an error. Always confirm with the user before passing overwrite: true.",
+  "description": "Writes text content to a file. Use append: true to safely add content to the end of an existing file without reading it first — ideal for updating index.md or log files. Without append, the full content replaces the file; if the file already exists you must also pass overwrite: true or the skill will refuse.",
   "parameters": {
     "type": "object",
     "properties": {
       "path":      { "type": "string",  "description": "Absolute or relative path to the file to write." },
-      "content":   { "type": "string",  "description": "The full text content to write to the file." },
-      "overwrite": { "type": "boolean", "description": "Set to true to allow overwriting an existing file. Defaults to false." }
+      "content":   { "type": "string",  "description": "The text content to write or append." },
+      "overwrite": { "type": "boolean", "description": "Set to true to allow overwriting an existing file when not using append mode. Defaults to false." },
+      "append":    { "type": "boolean", "description": "Set to true to append content to the end of an existing file instead of replacing it. Creates the file if it does not exist. Overwrite is ignored when append is true." }
     },
     "required": ["path", "content"]
   },
