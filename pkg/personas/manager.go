@@ -32,6 +32,10 @@ func Load(dir string) ([]Persona, error) {
 		if err := json.Unmarshal(data, &m); err != nil {
 			return nil, fmt.Errorf("parsing persona manifest %s: %w", manifestPath, err)
 		}
+		agentsPath := filepath.Join(personaDir, "AGENTS.md")
+		if agentsContent, err := os.ReadFile(agentsPath); err == nil {
+			m.SystemPrompt = string(agentsContent)
+		}
 		result = append(result, Persona{Manifest: m, Dir: personaDir})
 	}
 	return result, nil

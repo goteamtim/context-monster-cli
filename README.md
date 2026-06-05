@@ -101,6 +101,15 @@ Create a subdirectory under `skills/` with two files:
 
 For agent-generated implementations, use the contract and prompt template in `skills/SKILL_BUILDER.md`.
 
+You can also place an `AGENTS.md` file in a skill directory. If present, its content overrides the `description` field from `manifest.json`. This is useful for writing richer tool descriptions that guide the model's behaviour without cluttering the manifest:
+
+```
+skills/
+└── my_skill/
+    ├── manifest.json  ← keep description short or leave it empty
+    └── AGENTS.md      ← detailed description/instructions for the model
+```
+
 **`skills/my_skill/manifest.json`**
 ```json
 {
@@ -149,7 +158,7 @@ Create a subdirectory under `personas/` with a `persona.json`:
 |---|---|---|
 | `name` | yes | Identifier used with `--persona <name>` |
 | `description` | yes | Human-readable description |
-| `system_prompt` | yes | Injected as the first system message |
+| `system_prompt` | yes* | Injected as the first system message. Overridden by `AGENTS.md` if present |
 | `model` | no | Overrides `--model`; omit to use the flag value |
 | `context_window` | no | Sets Ollama's `num_ctx` option |
 | `max_tokens` | no | Sets Ollama's `num_predict` option |
@@ -157,6 +166,17 @@ Create a subdirectory under `personas/` with a `persona.json`:
 
 ```bash
 go run ./cmd/agent --persona dev_journal
+```
+
+#### AGENTS.md system prompt
+
+Instead of writing the system prompt inline in `persona.json`, you can place an `AGENTS.md` file in the persona directory. If it exists, its content is used as the system prompt and the `system_prompt` field in `persona.json` is ignored. This makes long prompts easier to read and edit:
+
+```
+personas/
+└── my_persona/
+    ├── persona.json   ← set system_prompt to "" or omit it
+    └── AGENTS.md      ← actual system prompt lives here
 ```
 
 A shell alias hint is printed to stderr on startup:
