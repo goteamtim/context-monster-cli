@@ -56,11 +56,11 @@ go run ./cmd/agent --persona dev_journal
 context-monster-cli/
 ├── cmd/agent/
 │   └── main.go              # Entry point — flag parsing, wires packages together
-├── pkg/
+├── internal/                # Private packages; only importable within this module
 │   ├── ollama/
 │   │   └── client.go        # HTTP client for /api/chat; all Ollama API types
 │   ├── skills/
-│   │   ├── types.go         # Manifest/Skill structs, ToOllamaTool() conversion
+│   │   ├── types.go         # Manifest/Skill structs
 │   │   └── manager.go       # Load(), Execute() with 30s timeout
 │   ├── personas/
 │   │   ├── types.go         # PersonaManifest/Persona structs
