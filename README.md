@@ -1,10 +1,26 @@
 # context-monster-cli
 
-A minimal, local-first CLI agent that connects to a running [Ollama](https://ollama.com) instance and extends the model's capabilities through dynamically loaded, language-agnostic "skills".
+A local-first CLI agent harness that runs entirely on your own hardware via [Ollama](https://ollama.com). Build focused, specialist agents — called **monsters** — that execute real tasks through composable, language-agnostic skills. No API keys. No cloud. No data leaving your machine.
 
 Zero external Go dependencies — pure stdlib.
 
-Built for developers who want capable, customizable AI agents without API costs or data leaving their machine.
+---
+
+## Why Context Monster?
+
+Most AI agent frameworks assume you're willing to send your data to a third-party API and pay for every token. Context Monster assumes the opposite.
+
+**Privacy by default.** Every inference runs locally through Ollama. Your prompts, your documents, your tool outputs — none of it touches an external server. This makes Context Monster a strong fit for regulated industries, sensitive workflows, and anyone who simply prefers to keep their data where it belongs.
+
+**Zero marginal cost.** There's no per-token billing, no subscription tier limiting your usage, and no vendor lock-in. Once your model is pulled and your skill is built, you can run it as many times as you want.
+
+**Designed for modest hardware.** Context Monster is optimized for smaller, lightweight models running on CPU or a single consumer GPU. It's practical on a laptop, not just a cloud VM with 8 GPUs.
+
+**Composable, not monolithic.** Skills are standalone executables — write them in Go, Python, Bash, or anything that runs on your machine. Personas give each agent a distinct identity, model configuration, and curated toolset. The two concepts stay cleanly separated so you can mix and match.
+
+**Simple enough to understand completely.** The entire harness is pure Go stdlib. No framework magic, no hidden abstractions. If something breaks, you can read the source and fix it.
+
+---
 
 ## Requirements
 
