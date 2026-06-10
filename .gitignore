@@ -4,6 +4,7 @@ context-monster-cli
 # Compiled skill binaries (built by 'go build' inside each skill dir)
 skills/build_skill/build
 skills/file_search/search
+skills/grep/grep
 skills/list_directory/list
 skills/read_file/read
 skills/wiki_search/search

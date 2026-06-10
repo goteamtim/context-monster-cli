@@ -25,18 +25,29 @@ make skills
 go run ./cmd/agent
 ```
 
+When the chat opens, use slash commands locally instead of asking the model to interpret control input:
+
+| Command | Description |
+|---|---|
+| `/help` | Show the available local commands |
+| `/tools` | List the tools available in the current mode or persona |
+| `/clear` | Reset the current chat back to the system prompt |
+| `/exit` | Leave the chat immediately |
+| `/quit` | Alias for `/exit` |
+
 ## Flags
 
 | Flag | Default | Description |
 |---|---|---|
 | `--model` | `qwen3.5:4b` | Ollama model to use |
 | `--skills-dir` | `./skills` | Directory containing skill subdirectories |
-| `--skill` | _(none)_ | Run a named standalone persona (see [Standalone Personas](#standalone-personas)) |
+| `--personas-dir` | `./personas` | Directory containing persona subdirectories |
+| `--persona` | _(none)_ | Run a named persona (see [Personas](#personas)) |
 | `--debug` | `false` | Print raw Ollama response details to stderr |
 
 ```bash
 go run ./cmd/agent --model qwen3.5:7b --skills-dir ./skills
-go run ./cmd/agent --skill running_coach
+go run ./cmd/agent --persona dev_journal
 ```
 
 ## Project Structure
@@ -50,16 +61,21 @@ context-monster-cli/
 │   │   └── client.go        # HTTP client for /api/chat; all Ollama API types
 │   ├── skills/
 │   │   ├── types.go         # Manifest/Skill structs, ToOllamaTool() conversion
-│   │   └── manager.go       # LoadSkills(), Execute() with 30s timeout
+│   │   └── manager.go       # Load(), Execute() with 30s timeout
+│   ├── personas/
+│   │   ├── types.go         # PersonaManifest/Persona structs
+│   │   └── manager.go       # Load(), FindByName()
 │   └── agent/
 │       └── engine.go        # REPL loop, multi-turn tool-call orchestration
 ├── skills/
 │   ├── file_search/         # Search a directory for files by extension
+│   ├── grep/                # Regex search with line-range scoping and context lines
 │   ├── read_file/           # Read the contents of a file
 │   ├── list_directory/      # List immediate contents of a directory
 │   ├── build_skill/         # Meta-skill: scaffolds new skills at runtime
-│   ├── wiki_search/         # Search a local markdown wiki (index.md + pages)
-│   └── running_coach/       # Example wiki-backed standalone persona
+│   └── wiki_search/         # Search a local markdown wiki (index.md + pages)
+├── personas/
+│   └── dev_journal/         # Example wiki-backed persona
 ├── go.mod
 ├── Makefile             # `make skills` builds all bundled skill binaries
 └── README.md
@@ -70,15 +86,31 @@ context-monster-cli/
 | Skill | Parameters | Description |
 |---|---|---|
 | `file_search` | `dir`, `ext` | Recursively finds files matching an extension |
+| `grep` | `path`, `pattern`?, `start_line`?, `end_line`?, `context_lines`? | Searches a file for a regex pattern; returns matches with line numbers and optional surrounding context. Reads a line range when no pattern is given. |
 | `read_file` | `path` | Returns the full text contents of a file |
 | `list_directory` | `path` | Lists entries in a directory with file/dir labels |
 | `wiki_search` | `wiki_dir`, `query` | Searches a wiki's `index.md` by keyword score, returns top matching pages in one call |
+
+## Bundled Personas
+
+| Persona | Model | Description |
+|---|---|---|
+| `dev_journal` | `qwen3.5:9b` | Engineering journal with a persistent wiki |
 
 ## Adding Your Own Skill
 
 Create a subdirectory under `skills/` with two files:
 
 For agent-generated implementations, use the contract and prompt template in `skills/SKILL_BUILDER.md`.
+
+You can also place an `AGENTS.md` file in a skill directory. If present, its content overrides the `description` field from `manifest.json`. This is useful for writing richer tool descriptions that guide the model's behaviour without cluttering the manifest:
+
+```
+skills/
+└── my_skill/
+    ├── manifest.json  ← keep description short or leave it empty
+    └── AGENTS.md      ← detailed description/instructions for the model
+```
 
 **`skills/my_skill/manifest.json`**
 ```json
@@ -106,37 +138,54 @@ print(f"You passed: {args['input']}")
 
 The agent will discover it automatically on next startup. The `command` field is executed with the JSON arguments appended as a single string argument. Skills can be written in any language.
 
-## Standalone Personas
+## Personas
 
-Any skill can include a `standalone` block in its manifest to become a self-contained persona. When launched with `--skill <name>`, the agent:
+**Skills** are what the agent *can do* — callable tools that execute code. **Personas** are *who* the agent *is* — an identity with a custom system prompt, a curated set of tools, and optionally its own model and context settings.
 
-- Injects the persona's `system_prompt` instead of the default one
-- Restricts available tools to the curated `tools` list
-- Prints a shell alias hint to stderr so you can set up a permanent shortcut
+Create a subdirectory under `personas/` with a `persona.json`:
 
-**`skills/running_coach/manifest.json`**
 ```json
 {
-  "name": "running_coach",
-  "description": "A standalone running coach persona.",
-  "parameters": { "type": "object", "properties": {}, "required": [] },
-  "command": "",
-  "standalone": {
-    "system_prompt": "You are an expert running coach...",
-    "tools": ["read_file", "file_search"]
-  }
+  "name": "my_persona",
+  "description": "What this persona is for.",
+  "system_prompt": "You are a ...",
+  "model": "qwen3:7b",
+  "context_window": 8192,
+  "max_tokens": 2048,
+  "tools": ["read_file", "file_search"]
 }
 ```
 
+| Field | Required | Description |
+|---|---|---|
+| `name` | yes | Identifier used with `--persona <name>` |
+| `description` | yes | Human-readable description |
+| `system_prompt` | yes* | Injected as the first system message. Overridden by `AGENTS.md` if present |
+| `model` | no | Overrides `--model`; omit to use the flag value |
+| `context_window` | no | Sets Ollama's `num_ctx` option |
+| `max_tokens` | no | Sets Ollama's `num_predict` option |
+| `tools` | yes | List of skill names the persona can call |
+
 ```bash
-go run ./cmd/agent --skill running_coach
-# Prints to stderr:
-# Alias hint: alias running_coach='context-monster-cli --skill running_coach'
+go run ./cmd/agent --persona dev_journal
 ```
 
-- `command` can be an empty string for pure-persona skills that are never called as a tool
-- A skill can be both a callable tool AND a persona simultaneously
-- The `tools` list controls exactly which other skills the persona can invoke — omit `build_skill` unless you want the persona to be able to create new skills
+#### AGENTS.md system prompt
+
+Instead of writing the system prompt inline in `persona.json`, you can place an `AGENTS.md` file in the persona directory. If it exists, its content is used as the system prompt and the `system_prompt` field in `persona.json` is ignored. This makes long prompts easier to read and edit:
+
+```
+personas/
+└── my_persona/
+    ├── persona.json   ← set system_prompt to "" or omit it
+    └── AGENTS.md      ← actual system prompt lives here
+```
+
+A shell alias hint is printed to stderr on startup:
+
+```
+# Alias hint: alias dev_journal='context-monster-cli --persona dev_journal'
+```
 
 ### Wiki-Backed Personas
 
@@ -165,42 +214,43 @@ to save it. When the user agrees:
    Use overwrite=true to replace the existing index.md.
 ```
 
-**`skills/running_coach/manifest.json`** (abbreviated)
+**`personas/dev_journal/persona.json`** (abbreviated)
 ```json
 {
-  "standalone": {
-    "system_prompt": "You are an expert running coach...\n\n## Wiki\n\nYou maintain a persistent knowledge wiki at skills/running_coach/wiki/. Before answering any running question, call wiki_search...",
-    "tools": ["wiki_search", "read_file", "write_file", "file_search"]
-  }
+  "name": "dev_journal",
+  "system_prompt": "You are a quiet, sharp engineering journal...\n\n## Wiki\n\nYou maintain a persistent journal wiki at personas/dev_journal/wiki/. Before responding to questions about past work, call wiki_search...",
+  "tools": ["wiki_search", "read_file", "write_file", "file_search"]
 }
 ```
 
-The wiki directory lives alongside the persona's skill directory:
+The wiki directory lives inside the persona's directory:
 
 ```
-skills/
-└── running_coach/
-    ├── manifest.json
+personas/
+└── dev_journal/
+    ├── persona.json
     └── wiki/
         ├── index.md        ← catalog of all pages (LLM maintains)
-        └── pages/          ← one markdown file per topic (LLM writes)
+        └── decisions/      ← architectural and design choices
+        └── sessions/       ← dated notes on what was worked on
+        └── problems/       ← bugs, blockers, and resolutions
 ```
 
 The `index.md` uses simple category headers with one link per line:
 
 ```markdown
-## Training Plans
-- [12-Week Marathon Plan](pages/marathon-12-week.md) — beginner-friendly base-building plan
+## Decisions
+- [Chose SQLite over Postgres](decisions/chose-sqlite-over-postgres.md) — lightweight, no server needed for this use case
 
-## Injury Prevention
-- [IT Band Syndrome](pages/it-band.md) — causes, treatment, and return-to-run protocol
+## Problems
+- [Scanner blocking on large input](problems/scanner-large-input.md) — switched to bufio.Reader with a larger buffer
 ```
 
 `wiki_search` parses these lines, scores them against your query by keyword match, and returns the top 5 pages' full content in a single tool call. As the wiki grows, answers get more grounded — the model cites its own prior work rather than improvising.
 
 ## How It Works
 
-1. On startup, the agent scans `./skills/` for `manifest.json` files and registers each as an Ollama tool.
+1. On startup, the agent scans `./skills/` for `manifest.json` files and registers each as an Ollama tool. In persona mode (`--persona`), it also loads `./personas/` and restricts tools and system prompt to those declared by the persona.
 2. User input is appended to the conversation history and sent to Ollama along with the tool definitions.
 3. If Ollama returns `tool_calls`, each skill is executed as a subprocess with a 30-second timeout. Results are appended to history as `tool` role messages.
 4. Ollama is prompted again with the tool results to produce a final synthesis response.

@@ -15,16 +15,6 @@ type Parameters struct {
 	Required   []string             `json:"required"`
 }
 
-// StandaloneConfig is the optional block that makes a skill runnable as a
-// self-contained persona via --skill <name>.
-type StandaloneConfig struct {
-	// SystemPrompt is injected as the first system message when the persona starts.
-	SystemPrompt string `json:"system_prompt"`
-	// Tools is the curated list of skill names the persona is allowed to call.
-	// An empty slice means the persona has no tool access.
-	Tools []string `json:"tools"`
-}
-
 // Manifest mirrors the manifest.json file that every skill must provide.
 type Manifest struct {
 	Name        string     `json:"name"`
@@ -32,9 +22,7 @@ type Manifest struct {
 	Parameters  Parameters `json:"parameters"`
 	// Command is the executable + optional args, e.g. "./search" or "python3 run.py".
 	// Paths starting with "." are resolved relative to the skill's directory.
-	// May be empty for pure-persona skills that are never called as a tool.
-	Command    string            `json:"command"`
-	Standalone *StandaloneConfig `json:"standalone,omitempty"`
+	Command string `json:"command"`
 }
 
 // Skill is a fully parsed, ready-to-use skill with its manifest and directory path.

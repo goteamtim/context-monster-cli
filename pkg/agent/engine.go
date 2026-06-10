@@ -13,11 +13,12 @@ import (
 
 // Agent orchestrates the REPL loop and multi-turn tool-calling conversation.
 type Agent struct {
-	client  *ollama.Client
-	skills  []skills.Skill
-	history []ollama.Message
-	tools   []ollama.Tool
-	verbose bool
+	client       *ollama.Client
+	skills       []skills.Skill
+	systemPrompt string
+	history      []ollama.Message
+	tools        []ollama.Tool
+	verbose      bool
 }
 
 // New creates an Agent wired with the given Ollama client and loaded skills.
@@ -29,10 +30,11 @@ func New(client *ollama.Client, loadedSkills []skills.Skill, systemPrompt string
 	}
 
 	return &Agent{
-		client:  client,
-		skills:  loadedSkills,
-		tools:   tools,
-		verbose: verbose,
+		client:       client,
+		skills:       loadedSkills,
+		systemPrompt: systemPrompt,
+		tools:        tools,
+		verbose:      verbose,
 		history: []ollama.Message{
 			{Role: "system", Content: systemPrompt},
 		},
@@ -43,7 +45,7 @@ func New(client *ollama.Client, loadedSkills []skills.Skill, systemPrompt string
 // multi-turn conversation, and writes assistant replies to stdout.
 func (a *Agent) Run() {
 	scanner := bufio.NewScanner(os.Stdin)
-	fmt.Println("Context Monster ready. Type your message (Ctrl+C or Ctrl+D to quit).")
+	fmt.Println("Context Monster ready. Type your message, or /help for commands.")
 	fmt.Println()
 
 	for {
@@ -55,6 +57,14 @@ func (a *Agent) Run() {
 
 		input := strings.TrimSpace(scanner.Text())
 		if input == "" {
+			continue
+		}
+
+		if handled, keepRunning := a.handleSlashCommand(input); handled {
+			if !keepRunning {
+				fmt.Println("Bye.")
+				break
+			}
 			continue
 		}
 
@@ -75,6 +85,52 @@ func (a *Agent) Run() {
 	}
 }
 
+func (a *Agent) handleSlashCommand(input string) (handled bool, keepRunning bool) {
+	name, args, ok := parseSlashCommand(input)
+	if !ok {
+		return false, true
+	}
+
+	switch name {
+	case "exit", "quit":
+		return true, false
+	case "help":
+		fmt.Println("Commands:")
+		fmt.Println("  /help   Show this help")
+		fmt.Println("  /tools  List available tools")
+		fmt.Println("  /clear  Reset the current chat")
+		fmt.Println("  /exit   Leave the chat")
+		fmt.Println("  /quit   Alias for /exit")
+		fmt.Println()
+		fmt.Println("Any other message is sent to the model as plain chat.")
+		return true, true
+	case "clear":
+		a.history = []ollama.Message{{Role: "system", Content: a.systemPrompt}}
+		fmt.Println("Chat cleared.")
+		return true, true
+	case "tools":
+		if len(a.skills) == 0 {
+			fmt.Println("No tools available.")
+			return true, true
+		}
+
+		names := make([]string, len(a.skills))
+		for i, skill := range a.skills {
+			names[i] = skill.Manifest.Name
+		}
+		fmt.Printf("Tools: %s\n", strings.Join(names, ", "))
+		return true, true
+	default:
+		if args != "" {
+			fmt.Printf("Unknown command: /%s %s\n", name, args)
+		} else {
+			fmt.Printf("Unknown command: /%s\n", name)
+		}
+		fmt.Println("Type /help for available commands.")
+		return true, true
+	}
+}
+
 // think drives the model round-trips until a plain text response is returned.
 // It handles tool calls by executing the matching skill and re-prompting.
 func (a *Agent) think(ctx context.Context) (string, error) {
@@ -90,9 +146,14 @@ func (a *Agent) think(ctx context.Context) (string, error) {
 
 		msg := resp.Message
 
+		// Extract visible content: prefer the dedicated Thinking field (newer
+		// Ollama builds), then fall back to stripping inline <think>…</think>
+		// blocks that older builds embed directly in Content.
+		visible := stripThinking(msg.Content)
+
 		if a.verbose {
-			fmt.Fprintf(os.Stderr, "[debug] role=%q content=%q tool_calls=%d\n",
-				msg.Role, msg.Content, len(msg.ToolCalls))
+			fmt.Fprintf(os.Stderr, "[debug] role=%q content=%q thinking=%q tool_calls=%d\n",
+				msg.Role, visible, msg.Thinking, len(msg.ToolCalls))
 			for i, tc := range msg.ToolCalls {
 				fmt.Fprintf(os.Stderr, "[debug]   tool_call[%d] name=%q args=%s\n",
 					i, tc.Function.Name, tc.Function.Arguments)
@@ -101,17 +162,23 @@ func (a *Agent) think(ctx context.Context) (string, error) {
 
 		// No tool calls — this is the final text reply.
 		if len(msg.ToolCalls) == 0 {
+			if visible == "" {
+				// The model produced only reasoning tokens and no visible text.
+				// Return a fallback so the REPL always prints something useful.
+				return "(no response — the model may still be warming up or the prompt produced only internal reasoning; try rephrasing)", nil
+			}
 			a.history = append(a.history, ollama.Message{
 				Role:    "assistant",
-				Content: msg.Content,
+				Content: visible,
 			})
-			return msg.Content, nil
+			return visible, nil
 		}
 
 		// Append the assistant's tool-call turn to history.
+		// Omit Thinking — it is internal reasoning and wastes context tokens.
 		a.history = append(a.history, ollama.Message{
 			Role:      "assistant",
-			Content:   msg.Content,
+			Content:   visible,
 			ToolCalls: msg.ToolCalls,
 		})
 

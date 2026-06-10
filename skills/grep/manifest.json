@@ -1,0 +1,16 @@
+{
+  "name": "grep",
+  "description": "Searches a file for a regex pattern and returns matching lines with their line numbers. Supports optional line-range scoping (search within start_line..end_line only) and context_lines to show surrounding lines around each match. Can also read a specific line range without a pattern.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "path":          { "type": "string",  "description": "Path to the file to search or read." },
+      "pattern":       { "type": "string",  "description": "Go regular expression to search for. Required unless using range-only mode (start_line + end_line)." },
+      "start_line":    { "type": "integer", "description": "First line of the search or read window (1-indexed). Must be paired with end_line." },
+      "end_line":      { "type": "integer", "description": "Last line of the search or read window (1-indexed, inclusive). Must be paired with start_line." },
+      "context_lines": { "type": "integer", "description": "Number of surrounding lines to show around each match (default 0)." }
+    },
+    "required": ["path"]
+  },
+  "command": "./grep"
+}

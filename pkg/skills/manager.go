@@ -38,6 +38,11 @@ func Load(dir string) ([]Skill, error) {
 			return nil, fmt.Errorf("invalid manifest at %s: %w", manifestPath, err)
 		}
 
+		agentsPath := filepath.Join(dir, entry.Name(), "AGENTS.md")
+		if agentsContent, err := os.ReadFile(agentsPath); err == nil {
+			m.Description = string(agentsContent)
+		}
+
 		skills = append(skills, Skill{
 			Manifest: m,
 			Dir:      filepath.Join(dir, entry.Name()),

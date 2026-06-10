@@ -48,10 +48,14 @@ type ToolCall struct {
 // Message is a single entry in the conversation history.
 // ToolCalls is populated only on assistant messages that invoke tools.
 // Name identifies the tool that produced a result; required on tool-role messages.
+// Thinking captures the chain-of-thought text returned by reasoning models
+// (e.g. qwen3) in Ollama's separate "thinking" field. It is never sent back
+// to the model in history — only Content is used for that.
 type Message struct {
 	Role      string     `json:"role"`
 	Name      string     `json:"name,omitempty"`
 	Content   string     `json:"content"`
+	Thinking  string     `json:"thinking,omitempty"`
 	ToolCalls []ToolCall `json:"tool_calls,omitempty"`
 }
 
@@ -61,6 +65,7 @@ type ChatRequest struct {
 	Messages []Message `json:"messages"`
 	Tools    []Tool    `json:"tools,omitempty"`
 	Stream   bool      `json:"stream"`
+	Options  *Options  `json:"options,omitempty"`
 }
 
 // ChatResponse is the response body from /api/chat.
@@ -68,19 +73,28 @@ type ChatResponse struct {
 	Message Message `json:"message"`
 }
 
+// Options specifies optional model-level parameters sent with each chat request.
+type Options struct {
+	NumCtx     int `json:"num_ctx,omitempty"`
+	NumPredict int `json:"num_predict,omitempty"`
+}
+
 // Client is an HTTP client for the Ollama chat API.
 type Client struct {
 	baseURL    string
 	model      string
 	httpClient *http.Client
+	options    *Options
 }
 
 // New creates a new Client targeting baseURL with the given model.
-func New(baseURL, model string) *Client {
+// opts may be empty to use Ollama's defaults.
+func New(baseURL, model string, opts *Options) *Client {
 	return &Client{
 		baseURL:    baseURL,
 		model:      model,
 		httpClient: &http.Client{},
+		options:    opts,
 	}
 }
 
@@ -92,6 +106,7 @@ func (c *Client) Chat(ctx context.Context, messages []Message, tools []Tool) (*C
 		Messages: messages,
 		Tools:    tools,
 		Stream:   false,
+		Options:  c.options,
 	}
 
 	body, err := json.Marshal(reqBody)
