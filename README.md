@@ -69,6 +69,7 @@ context-monster-cli/
 │       └── engine.go        # REPL loop, multi-turn tool-call orchestration
 ├── skills/
 │   ├── file_search/         # Search a directory for files by extension
+│   ├── grep/                # Regex search with line-range scoping and context lines
 │   ├── read_file/           # Read the contents of a file
 │   ├── list_directory/      # List immediate contents of a directory
 │   ├── build_skill/         # Meta-skill: scaffolds new skills at runtime
@@ -85,6 +86,7 @@ context-monster-cli/
 | Skill | Parameters | Description |
 |---|---|---|
 | `file_search` | `dir`, `ext` | Recursively finds files matching an extension |
+| `grep` | `path`, `pattern`?, `start_line`?, `end_line`?, `context_lines`? | Searches a file for a regex pattern; returns matches with line numbers and optional surrounding context. Reads a line range when no pattern is given. |
 | `read_file` | `path` | Returns the full text contents of a file |
 | `list_directory` | `path` | Lists entries in a directory with file/dir labels |
 | `wiki_search` | `wiki_dir`, `query` | Searches a wiki's `index.md` by keyword score, returns top matching pages in one call |
