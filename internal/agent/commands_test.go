@@ -6,7 +6,7 @@ import (
 	"os"
 	"testing"
 
-	"context-monster-cli/pkg/ollama"
+	"github.com/goteamtim/context-monster-cli/internal/ollama"
 )
 
 func TestParseSlashCommand(t *testing.T) {

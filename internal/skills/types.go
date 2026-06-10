@@ -1,7 +1,5 @@
 package skills
 
-import "context-monster-cli/pkg/ollama"
-
 // ParamDef describes a single parameter as declared in a manifest.
 type ParamDef struct {
 	Type        string `json:"type"`
@@ -32,25 +30,4 @@ type Skill struct {
 	Dir string
 }
 
-// ToOllamaTool converts the skill into the Tool format expected by the Ollama API.
-func (s Skill) ToOllamaTool() ollama.Tool {
-	props := make(map[string]ollama.ToolFunctionParam, len(s.Manifest.Parameters.Properties))
-	for k, v := range s.Manifest.Parameters.Properties {
-		props[k] = ollama.ToolFunctionParam{
-			Type:        v.Type,
-			Description: v.Description,
-		}
-	}
-	return ollama.Tool{
-		Type: "function",
-		Function: ollama.ToolFunction{
-			Name:        s.Manifest.Name,
-			Description: s.Manifest.Description,
-			Parameters: ollama.ToolFunctionParameters{
-				Type:       s.Manifest.Parameters.Type,
-				Properties: props,
-				Required:   s.Manifest.Parameters.Required,
-			},
-		},
-	}
-}
+

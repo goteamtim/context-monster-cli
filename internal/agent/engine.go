@@ -7,8 +7,8 @@ import (
 	"os"
 	"strings"
 
-	"context-monster-cli/pkg/ollama"
-	"context-monster-cli/pkg/skills"
+	"github.com/goteamtim/context-monster-cli/internal/ollama"
+	"github.com/goteamtim/context-monster-cli/internal/skills"
 )
 
 // Agent orchestrates the REPL loop and multi-turn tool-calling conversation.
@@ -26,7 +26,7 @@ type Agent struct {
 func New(client *ollama.Client, loadedSkills []skills.Skill, systemPrompt string, verbose bool) *Agent {
 	tools := make([]ollama.Tool, len(loadedSkills))
 	for i, s := range loadedSkills {
-		tools[i] = s.ToOllamaTool()
+		tools[i] = skillToTool(s)
 	}
 
 	return &Agent{
@@ -37,6 +37,30 @@ func New(client *ollama.Client, loadedSkills []skills.Skill, systemPrompt string
 		verbose:      verbose,
 		history: []ollama.Message{
 			{Role: "system", Content: systemPrompt},
+		},
+	}
+}
+
+// skillToTool converts a Skill into the Tool format expected by the Ollama API.
+// This conversion lives here, at the point where skills and ollama types are composed.
+func skillToTool(s skills.Skill) ollama.Tool {
+	props := make(map[string]ollama.ToolFunctionParam, len(s.Manifest.Parameters.Properties))
+	for k, v := range s.Manifest.Parameters.Properties {
+		props[k] = ollama.ToolFunctionParam{
+			Type:        v.Type,
+			Description: v.Description,
+		}
+	}
+	return ollama.Tool{
+		Type: "function",
+		Function: ollama.ToolFunction{
+			Name:        s.Manifest.Name,
+			Description: s.Manifest.Description,
+			Parameters: ollama.ToolFunctionParameters{
+				Type:       s.Manifest.Parameters.Type,
+				Properties: props,
+				Required:   s.Manifest.Parameters.Required,
+			},
 		},
 	}
 }

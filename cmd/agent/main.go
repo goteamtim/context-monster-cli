@@ -4,11 +4,12 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 
-	"context-monster-cli/pkg/agent"
-	"context-monster-cli/pkg/ollama"
-	"context-monster-cli/pkg/personas"
-	"context-monster-cli/pkg/skills"
+	"github.com/goteamtim/context-monster-cli/internal/agent"
+	"github.com/goteamtim/context-monster-cli/internal/ollama"
+	"github.com/goteamtim/context-monster-cli/internal/personas"
+	"github.com/goteamtim/context-monster-cli/internal/skills"
 )
 
 const defaultSystemPrompt = "You are a helpful assistant with access to local tools. Help the user achieve their goals. " +
@@ -83,7 +84,7 @@ func main() {
 			for i, s := range activeSkills {
 				names[i] = s.Manifest.Name
 			}
-			fmt.Printf("Tools available: %s\n", joinStrings(names, ", "))
+			fmt.Printf("Tools available: %s\n", strings.Join(names, ", "))
 		} else {
 			fmt.Println("Tools available: none")
 		}
@@ -96,7 +97,7 @@ func main() {
 			for i, s := range activeSkills {
 				names[i] = s.Manifest.Name
 			}
-			fmt.Printf("Loaded %d skill(s): %s\n", len(activeSkills), joinStrings(names, ", "))
+			fmt.Printf("Loaded %d skill(s): %s\n", len(activeSkills), strings.Join(names, ", "))
 		} else {
 			fmt.Println("No skills loaded (running without tools).")
 		}
@@ -106,13 +107,3 @@ func main() {
 	agent.New(client, activeSkills, systemPrompt, *debug).Run()
 }
 
-func joinStrings(ss []string, sep string) string {
-	result := ""
-	for i, s := range ss {
-		if i > 0 {
-			result += sep
-		}
-		result += s
-	}
-	return result
-}
