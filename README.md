@@ -60,6 +60,7 @@ When the chat opens, use slash commands locally instead of asking the model to i
 | `--personas-dir` | `./personas` | Directory containing persona subdirectories |
 | `--persona` | _(none)_ | Run a named persona (see [Personas](#personas)) |
 | `--debug` | `false` | Print raw Ollama response details to stderr |
+| `--record` | `false` | Record episodes to JSONL for training data (see [Episode Logging](#episode-logging)) |
 
 ```bash
 go run ./cmd/agent --model qwen3.5:7b --skills-dir ./skills
@@ -85,6 +86,9 @@ context-monster-cli/
 │       ├── engine.go        # REPL loop, multi-turn tool-call orchestration
 │       ├── pathguard.go     # Pre-flight path access validation for tool calls
 │       └── commands.go      # Slash-command parsing helpers
+│   └── training/
+│       ├── types.go         # Episode, Step, EpisodeMetadata types
+│       └── logger.go        # JSONL episode logger
 ├── skills/
 │   ├── file_search/         # Search a directory for files by extension
 │   ├── grep/                # Regex search with line-range scoping and context lines
@@ -202,6 +206,7 @@ Create a subdirectory under `personas/` with a `persona.json`:
 | `max_tokens` | no | Sets Ollama's `num_predict` option |
 | `tools` | yes | List of skill names the persona can call |
 | `allowed_paths` | no | List of file/directory patterns the persona may access (see [File Access Control](#file-access-control)) |
+| `record` | no | Set to `true` to always record episodes for this persona (see [Episode Logging](#episode-logging)) |
 
 ```bash
 go run ./cmd/agent --persona dev_journal
@@ -284,6 +289,71 @@ The `index.md` uses simple category headers with one link per line:
 ```
 
 `wiki_search` parses these lines, scores them against your query by keyword match, and returns the top 5 pages' full content in a single tool call. As the wiki grows, answers get more grounded — the model cites its own prior work rather than improvising.
+
+## Episode Logging
+
+The agent can record every user turn as a structured episode for later use as training data, benchmarking, or evaluation. Each episode captures the original task, the tool calls the model made (with inputs and outputs), the final answer, and model metadata.
+
+Recording is enabled in two ways:
+
+**CLI flag** — useful for one-off sessions or personas without the config set:
+```bash
+go run ./cmd/agent --record
+go run ./cmd/agent --persona git_agent --record
+```
+
+**Persona config** — set `"record": true` in `persona.json` to always record for that persona:
+```json
+{
+  "name": "git_agent",
+  "record": true,
+  ...
+}
+```
+
+Episodes are appended as newline-delimited JSON (JSONL) to:
+- `personas/<name>/training/episodes.jsonl` when a persona is active
+- `./training/episodes.jsonl` for no-persona runs
+
+The directory is created automatically if it does not exist.
+
+### Episode Schema
+
+Each line in the JSONL file is a single JSON object:
+
+```json
+{
+  "id": "3f1a2b...",
+  "task": "What changed in the last commit?",
+  "steps": [
+    {
+      "observation": "What changed in the last commit?",
+      "reasoning": "I need to run git log to check...",
+      "tool_call": { "name": "grep", "arguments": { "path": ".", "pattern": "..." } },
+      "tool_result": "...",
+      "timestamp": "2026-06-17T10:00:00Z"
+    }
+  ],
+  "final_answer": "The last commit added X...",
+  "success": false,
+  "success_reason": "",
+  "metadata": {
+    "model": "qwen3.5:9b",
+    "provider": "ollama",
+    "persona_name": "git_agent",
+    "context_window": 8192,
+    "input_tokens": 312,
+    "output_tokens": 87,
+    "total_tokens": 399
+  },
+  "started_at": "2026-06-17T10:00:00Z",
+  "completed_at": "2026-06-17T10:00:03Z"
+}
+```
+
+`success` and `success_reason` default to `false` and `""` respectively and are intended for manual or LLM-assisted annotation after the fact.
+
+`steps` contains one entry per tool call. `observation` is the user task for the first step or the previous tool result for subsequent steps. `reasoning` is only present for models that produce chain-of-thought output (e.g. `qwen3`).
 
 ## File Access Control
 

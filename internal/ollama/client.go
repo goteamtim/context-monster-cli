@@ -69,8 +69,12 @@ type ChatRequest struct {
 }
 
 // ChatResponse is the response body from /api/chat.
+// PromptEvalCount and EvalCount are the input and output token counts
+// returned by Ollama as top-level fields on the non-streaming response.
 type ChatResponse struct {
-	Message Message `json:"message"`
+	Message         Message `json:"message"`
+	PromptEvalCount int     `json:"prompt_eval_count"`
+	EvalCount       int     `json:"eval_count"`
 }
 
 // Options specifies optional model-level parameters sent with each chat request.
