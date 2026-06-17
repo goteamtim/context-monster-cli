@@ -9,5 +9,6 @@
     },
     "required": ["dir", "ext"]
   },
-  "command": "./search"
+  "command": "./search",
+  "path_params": ["dir"]
 }

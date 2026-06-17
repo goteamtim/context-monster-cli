@@ -21,6 +21,9 @@ type Manifest struct {
 	// Command is the executable + optional args, e.g. "./search" or "python3 run.py".
 	// Paths starting with "." are resolved relative to the skill's directory.
 	Command string `json:"command"`
+	// PathParams is the list of parameter names whose values are file or
+	// directory paths. The agent uses this to enforce persona allowed_paths.
+	PathParams []string `json:"path_params,omitempty"`
 }
 
 // Skill is a fully parsed, ready-to-use skill with its manifest and directory path.

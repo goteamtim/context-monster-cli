@@ -8,5 +8,6 @@
     },
     "required": ["path"]
   },
-  "command": "./read"
+  "command": "./read",
+  "path_params": ["path"]
 }

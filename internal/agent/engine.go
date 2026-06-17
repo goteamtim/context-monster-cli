@@ -3,6 +3,7 @@ package agent
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -19,11 +20,15 @@ type Agent struct {
 	history      []ollama.Message
 	tools        []ollama.Tool
 	verbose      bool
+	// allowedPaths restricts which file/dir paths skills may access.
+	// An empty slice means unrestricted (backward-compatible default).
+	allowedPaths []string
 }
 
 // New creates an Agent wired with the given Ollama client and loaded skills.
 // systemPrompt is injected as the first message in the conversation history.
-func New(client *ollama.Client, loadedSkills []skills.Skill, systemPrompt string, verbose bool) *Agent {
+// allowedPaths restricts file/dir access for all tool calls; nil means unrestricted.
+func New(client *ollama.Client, loadedSkills []skills.Skill, systemPrompt string, verbose bool, allowedPaths []string) *Agent {
 	tools := make([]ollama.Tool, len(loadedSkills))
 	for i, s := range loadedSkills {
 		tools[i] = skillToTool(s)
@@ -35,6 +40,7 @@ func New(client *ollama.Client, loadedSkills []skills.Skill, systemPrompt string
 		systemPrompt: systemPrompt,
 		tools:        tools,
 		verbose:      verbose,
+		allowedPaths: allowedPaths,
 		history: []ollama.Message{
 			{Role: "system", Content: systemPrompt},
 		},
@@ -215,9 +221,11 @@ func (a *Agent) think(ctx context.Context) (string, error) {
 			var result string
 			if !found {
 				result = fmt.Sprintf("Error: tool %q is not available", name)
+			} else if pathErr := a.checkSkillPaths(skill, tc.Function.Arguments); pathErr != nil {
+				result = pathErr.Error()
 			} else {
 				var toolErr error
-				result, toolErr = skills.Execute(skill, tc.Function.Arguments)
+				result, toolErr = skills.Execute(skill, tc.Function.Arguments, a.allowedPaths)
 				if toolErr != nil {
 					result = fmt.Sprintf("Error executing tool %q: %v", name, toolErr)
 				}
@@ -233,6 +241,35 @@ func (a *Agent) think(ctx context.Context) (string, error) {
 
 		// Loop back to get the synthesis response.
 	}
+}
+
+// checkSkillPaths validates each path-type argument declared in the skill's
+// manifest against the agent's allowedPaths list. It returns an error suitable
+// for returning to the LLM as a tool result if any path is denied.
+func (a *Agent) checkSkillPaths(skill skills.Skill, argsJSON json.RawMessage) error {
+	if len(a.allowedPaths) == 0 || len(skill.Manifest.PathParams) == 0 {
+		return nil
+	}
+
+	var params map[string]json.RawMessage
+	if err := json.Unmarshal(argsJSON, &params); err != nil {
+		return nil // malformed JSON — let Execute handle it
+	}
+
+	for _, paramName := range skill.Manifest.PathParams {
+		raw, ok := params[paramName]
+		if !ok {
+			continue
+		}
+		var pathVal string
+		if err := json.Unmarshal(raw, &pathVal); err != nil || pathVal == "" {
+			continue
+		}
+		if err := checkPathAllowed(pathVal, a.allowedPaths); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // findSkill returns the Skill whose manifest name matches, or false.

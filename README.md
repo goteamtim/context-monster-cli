@@ -82,7 +82,9 @@ context-monster-cli/
 │   │   ├── types.go         # PersonaManifest/Persona structs
 │   │   └── manager.go       # Load(), FindByName()
 │   └── agent/
-│       └── engine.go        # REPL loop, multi-turn tool-call orchestration
+│       ├── engine.go        # REPL loop, multi-turn tool-call orchestration
+│       ├── pathguard.go     # Pre-flight path access validation for tool calls
+│       └── commands.go      # Slash-command parsing helpers
 ├── skills/
 │   ├── file_search/         # Search a directory for files by extension
 │   ├── grep/                # Regex search with line-range scoping and context lines
@@ -144,6 +146,24 @@ skills/
 }
 ```
 
+If your skill accepts file or directory path arguments, add `path_params` so the agent can enforce persona access control on them:
+
+```json
+{
+  "name": "my_skill",
+  "description": "What this skill does.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "path": { "type": "string", "description": "Path to operate on." }
+    },
+    "required": ["path"]
+  },
+  "command": "./my_skill",
+  "path_params": ["path"]
+}
+```
+
 **`skills/my_skill/my_skill.py`** (or any executable)
 ```python
 import sys, json
@@ -181,6 +201,7 @@ Create a subdirectory under `personas/` with a `persona.json`:
 | `context_window` | no | Sets Ollama's `num_ctx` option |
 | `max_tokens` | no | Sets Ollama's `num_predict` option |
 | `tools` | yes | List of skill names the persona can call |
+| `allowed_paths` | no | List of file/directory patterns the persona may access (see [File Access Control](#file-access-control)) |
 
 ```bash
 go run ./cmd/agent --persona dev_journal
@@ -264,10 +285,106 @@ The `index.md` uses simple category headers with one link per line:
 
 `wiki_search` parses these lines, scores them against your query by keyword match, and returns the top 5 pages' full content in a single tool call. As the wiki grows, answers get more grounded — the model cites its own prior work rather than improvising.
 
+## File Access Control
+
+By default a persona can read and write any path that the agent process can reach — constrained only by the OS file permissions of the user running it. The `allowed_paths` field narrows this further to an explicit allow-list you define per persona.
+
+```json
+{
+  "name": "my_persona",
+  "tools": ["read_file", "write_file", "grep"],
+  "allowed_paths": [
+    "./src",
+    "./docs/**",
+    "/absolute/path/to/data"
+  ]
+}
+```
+
+When `allowed_paths` is set, the agent validates every path-type argument in a tool call **before spawning any subprocess**. If the resolved absolute path of the argument falls outside the allow-list, the tool call is rejected and the LLM receives an error message like:
+
+```
+access denied: "/etc/passwd" is outside the persona's allowed paths
+```
+
+The LLM can then reason about the denial and respond accordingly — typically by explaining why it cannot fulfil the request or trying a different path.
+
+If `allowed_paths` is absent or empty, all paths are permitted (backward-compatible default).
+
+### Pattern Syntax
+
+Each entry in `allowed_paths` is resolved relative to the **current working directory** at startup time (usually the project root) unless it is already absolute.
+
+| Pattern form | Matches |
+|---|---|
+| `"./src"` or `"./src/**"` | Any file anywhere inside `./src/` |
+| `"/absolute/dir"` | Any file anywhere inside that directory |
+| `"/absolute/dir/file.txt"` | Exactly that one file |
+| `"./logs/*.log"` | Any `.log` file directly inside `./logs/` (no subdirectories) |
+| `"./src/**/*.go"` | _Not_ supported as a recursive glob — use a directory prefix instead |
+
+> **Note:** Glob patterns use Go's `filepath.Match` semantics, which does not support `**` as a multi-segment wildcard. For recursive directory access, use the plain directory form (`"./src"`) rather than a glob.
+
+The trailing `/**` suffix is treated as sugar for the directory prefix form and is stripped before comparison, so `"./src/**"` and `"./src"` are equivalent.
+
+### How Enforcement Works
+
+Path checking is a **pre-flight step** in the Go agent itself, not inside the skill binaries. The flow for every tool call:
+
+1. The LLM emits a tool call with its arguments.
+2. The agent looks up which parameters are path-type for that skill (declared via `path_params` in `manifest.json`).
+3. Each path argument is resolved to an absolute path via `filepath.Abs`.
+4. The resolved path is tested against `allowed_paths`. First match → allow. No match → deny.
+5. **On deny:** the agent never spawns the subprocess. The denial message is injected into history as the tool result, and Ollama is re-prompted to synthesise a response.
+6. **On allow:** the subprocess is spawned as normal. The `CM_ALLOWED_PATHS` environment variable is also set to the comma-joined allow-list for shell-script skills that want to perform secondary enforcement.
+
+### Declaring Path Parameters in a Skill
+
+For the agent to know which arguments to check, each skill manifest lists the names of its path-type parameters in `path_params`:
+
+```json
+{
+  "name": "read_file",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "path": { "type": "string", "description": "Path to the file." }
+    },
+    "required": ["path"]
+  },
+  "command": "./read",
+  "path_params": ["path"]
+}
+```
+
+All bundled skills (`read_file`, `write_file`, `grep`, `file_search`, `list_directory`, `wiki_search`) already declare their path parameters. When writing a custom skill, add `path_params` to its manifest for access control to apply.
+
+### Example: Scoped Code-Review Persona
+
+A persona that is only allowed to read files in `./src` and `./tests`, and write nothing:
+
+```json
+{
+  "name": "code_reviewer",
+  "description": "Reviews code in ./src and ./tests only.",
+  "system_prompt": "You are a meticulous code reviewer. Read source files, then provide feedback.",
+  "model": "qwen3.5:9b",
+  "tools": ["read_file", "grep", "list_directory", "file_search"],
+  "allowed_paths": [
+    "./src",
+    "./tests"
+  ]
+}
+```
+
+If the LLM tries to read a file outside those directories — say `../secrets/.env` or `/etc/passwd` — the attempt is blocked before any subprocess runs and the error is returned to the model.
+
+---
+
 ## How It Works
 
-1. On startup, the agent scans `./skills/` for `manifest.json` files and registers each as an Ollama tool. In persona mode (`--persona`), it also loads `./personas/` and restricts tools and system prompt to those declared by the persona.
+1. On startup, the agent scans `./skills/` for `manifest.json` files and registers each as an Ollama tool. In persona mode (`--persona`), it also loads `./personas/` and restricts tools and system prompt to those declared by the persona. If `allowed_paths` is set, path enforcement is armed for all subsequent tool calls.
 2. User input is appended to the conversation history and sent to Ollama along with the tool definitions.
-3. If Ollama returns `tool_calls`, each skill is executed as a subprocess with a 30-second timeout. Results are appended to history as `tool` role messages.
+3. If Ollama returns `tool_calls`, each skill's path arguments are validated against `allowed_paths` before any subprocess is started. Denied calls return an error to the LLM; allowed calls execute as a subprocess with a 30-second timeout. Results are appended to history as `tool` role messages.
 4. Ollama is prompted again with the tool results to produce a final synthesis response.
 5. The agent prints `Thinking...` and `Running tool: <name>...` to stderr as progress feedback.

@@ -8,5 +8,6 @@
     },
     "required": ["path"]
   },
-  "command": "./list"
+  "command": "./list",
+  "path_params": ["path"]
 }

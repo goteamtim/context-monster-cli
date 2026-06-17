@@ -15,5 +15,6 @@
     },
     "required": ["wiki_dir", "query"]
   },
-  "command": "./search"
+  "command": "./search",
+  "path_params": ["wiki_dir"]
 }

@@ -104,6 +104,13 @@ func main() {
 	}
 
 	client := ollama.New("http://localhost:11434", *model, opts)
-	agent.New(client, activeSkills, systemPrompt, *debug).Run()
+
+	var allowedPaths []string
+	if *personaName != "" {
+		p, _ := personas.FindByName(allPersonas, *personaName)
+		allowedPaths = p.Manifest.AllowedPaths
+	}
+
+	agent.New(client, activeSkills, systemPrompt, *debug, allowedPaths).Run()
 }
 

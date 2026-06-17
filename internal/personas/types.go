@@ -13,6 +13,10 @@ type PersonaManifest struct {
 	MaxTokens    int      `json:"max_tokens,omitempty"`
 	// Tools is the list of skill names the persona is allowed to call.
 	Tools        []string `json:"tools"`
+	// AllowedPaths is an optional list of file/directory patterns the persona
+	// may access via tools. Supports exact paths, directory prefixes, and glob
+	// patterns (filepath.Match syntax). An empty list means no restrictions.
+	AllowedPaths []string `json:"allowed_paths,omitempty"`
 }
 
 // Persona is a fully parsed persona with its manifest and directory path.
