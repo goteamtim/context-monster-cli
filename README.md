@@ -112,6 +112,7 @@ context-monster-cli/
 | `read_file` | `path` | Returns the full text contents of a file |
 | `list_directory` | `path` | Lists entries in a directory with file/dir labels |
 | `wiki_search` | `wiki_dir`, `query` | Searches a wiki's `index.md` by keyword score, returns top matching pages in one call |
+| `write_file` | `path`, `content`, `overwrite`?, `append`? | Writes text to a file. Refuses to overwrite an existing file unless `overwrite: true`. Use `append: true` to add content to the end of a file without replacing it; creates the file if it does not exist. Parent directories are created automatically. |
 
 ## Bundled Personas
 
