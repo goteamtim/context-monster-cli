@@ -60,6 +60,7 @@ When the chat opens, use slash commands locally instead of asking the model to i
 | `--personas-dir` | `./personas` | Directory containing persona subdirectories |
 | `--persona` | _(none)_ | Run a named persona (see [Personas](#personas)) |
 | `--debug` | `false` | Print raw Ollama response details to stderr |
+| `--record` | `false` | Record trajectories to JSONL for training data (see [Trajectory Logging](#trajectory-logging)) |
 
 ```bash
 go run ./cmd/agent --model qwen3.5:7b --skills-dir ./skills
@@ -85,6 +86,9 @@ context-monster-cli/
 │       ├── engine.go        # REPL loop, multi-turn tool-call orchestration
 │       ├── pathguard.go     # Pre-flight path access validation for tool calls
 │       └── commands.go      # Slash-command parsing helpers
+│   └── training/
+│       ├── types.go         # Trajectory, TrajectoryMessage, TrajectoryMetadata types
+│       └── logger.go        # JSONL trajectory logger
 ├── skills/
 │   ├── file_search/         # Search a directory for files by extension
 │   ├── grep/                # Regex search with line-range scoping and context lines
@@ -202,6 +206,7 @@ Create a subdirectory under `personas/` with a `persona.json`:
 | `max_tokens` | no | Sets Ollama's `num_predict` option |
 | `tools` | yes | List of skill names the persona can call |
 | `allowed_paths` | no | List of file/directory patterns the persona may access (see [File Access Control](#file-access-control)) |
+| `record` | no | Set to `true` to always record trajectories for this persona (see [Trajectory Logging](#trajectory-logging)) |
 
 ```bash
 go run ./cmd/agent --persona dev_journal
@@ -284,6 +289,96 @@ The `index.md` uses simple category headers with one link per line:
 ```
 
 `wiki_search` parses these lines, scores them against your query by keyword match, and returns the top 5 pages' full content in a single tool call. As the wiki grows, answers get more grounded — the model cites its own prior work rather than improvising.
+
+## Trajectory Logging
+
+The agent can record every user turn as a structured trajectory for later use as training data, benchmarking, or evaluation. Each trajectory captures the full conversation as an OpenAI-format `messages` array — directly consumable by SFT pipelines (Axolotl, LLaMA-Factory, unsloth) without any conversion step — plus a `metadata` object for analysis and eval tooling.
+
+Recording is enabled in two ways:
+
+**CLI flag** — useful for one-off sessions or personas without the config set:
+```bash
+go run ./cmd/agent --record
+go run ./cmd/agent --persona git_agent --record
+```
+
+**Persona config** — set `"record": true` in `persona.json` to always record for that persona:
+```json
+{
+  "name": "git_agent",
+  "record": true,
+  ...
+}
+```
+
+Trajectories are appended as newline-delimited JSON (JSONL) to:
+- `personas/<name>/training/trajectories.jsonl` when a persona is active
+- `./training/trajectories.jsonl` for no-persona runs
+
+The directory is created automatically if it does not exist.
+
+### Trajectory Schema
+
+Each line in the JSONL file is a single JSON object with two top-level keys: `messages` and `metadata`.
+
+```json
+{
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a ..."
+    },
+    {
+      "role": "user",
+      "content": "What changed in the last commit?"
+    },
+    {
+      "role": "assistant",
+      "reasoning_content": "I need to run git log to check...",
+      "tool_calls": [
+        {
+          "id": "call_3f1a2b",
+          "type": "function",
+          "function": {
+            "name": "grep",
+            "arguments": "{\"path\":\".\",\"pattern\":\"...\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call_3f1a2b",
+      "name": "grep",
+      "content": "..."
+    },
+    {
+      "role": "assistant",
+      "content": "The last commit added X..."
+    }
+  ],
+  "metadata": {
+    "id": "3f1a2b...",
+    "model": "qwen3.5:9b",
+    "provider": "ollama",
+    "persona_name": "git_agent",
+    "context_window": 8192,
+    "input_tokens": 312,
+    "output_tokens": 87,
+    "total_tokens": 399,
+    "success": false,
+    "success_reason": "",
+    "started_at": "2026-06-17T10:00:00Z",
+    "completed_at": "2026-06-17T10:00:03Z"
+  }
+}
+```
+
+**`messages`** follows the OpenAI messages format. Each tool-call round produces an `assistant` message (with `tool_calls`) followed by one `tool` message per call. The `tool_call_id` on a `tool` message links the result back to the `assistant` tool call that requested it; `name` identifies which function produced the result.
+
+**`reasoning_content`** on assistant messages captures chain-of-thought output from reasoning models (e.g. `qwen3`). The field name matches the convention used by DeepSeek and Qwen APIs. It is not part of the OpenAI spec and is ignored by SFT pipelines, but preserved for trajectory analysis.
+
+**`metadata.success`** and **`metadata.success_reason`** default to `false` and `""` and are intended for manual or LLM-assisted annotation after the fact.
 
 ## File Access Control
 

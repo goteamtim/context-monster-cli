@@ -4,12 +4,14 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/goteamtim/context-monster-cli/internal/agent"
 	"github.com/goteamtim/context-monster-cli/internal/ollama"
 	"github.com/goteamtim/context-monster-cli/internal/personas"
 	"github.com/goteamtim/context-monster-cli/internal/skills"
+	"github.com/goteamtim/context-monster-cli/internal/training"
 )
 
 const defaultSystemPrompt = "You are a helpful assistant with access to local tools. Help the user achieve their goals. " +
@@ -22,6 +24,7 @@ func main() {
 	personasDir := flag.String("personas-dir", "./personas", "Directory containing persona subdirectories")
 	personaName := flag.String("persona", "", "Run a named persona by name")
 	debug := flag.Bool("debug", false, "Print raw Ollama response details to stderr")
+	record := flag.Bool("record", false, "Record episodes to training/episodes.jsonl for the active persona (or ./training/ if no persona)")
 	flag.Parse()
 
 	allSkills, err := skills.Load(*skillsDir)
@@ -40,7 +43,14 @@ func main() {
 		activeSkills []skills.Skill
 		systemPrompt string
 		opts         *ollama.Options
+		activeMeta   training.TrajectoryMetadata
+		trainingDir  string
 	)
+
+	activeMeta = training.TrajectoryMetadata{
+		Model:    *model,
+		Provider: "ollama",
+	}
 
 	if *personaName != "" {
 		// Persona mode.
@@ -77,6 +87,16 @@ func main() {
 			}
 		}
 
+		// Populate episode metadata with persona-level values.
+		activeMeta.Model = *model
+		activeMeta.PersonaName = cfg.Name
+		activeMeta.ContextWindow = cfg.ContextWindow
+
+		// Enable recording if the --record flag is set or the persona opts in.
+		if *record || cfg.Record {
+			trainingDir = filepath.Join(p.Dir, "training")
+		}
+
 		fmt.Fprintf(os.Stderr, "# Alias hint: alias %s='%s --persona %s'\n\n", *personaName, os.Args[0], *personaName)
 		fmt.Printf("Running as persona: %s\n", *personaName)
 		if len(activeSkills) > 0 {
@@ -101,6 +121,11 @@ func main() {
 		} else {
 			fmt.Println("No skills loaded (running without tools).")
 		}
+
+		// Enable recording if --record is set (no persona dir, use ./training).
+		if *record {
+			trainingDir = "./training"
+		}
 	}
 
 	client := ollama.New("http://localhost:11434", *model, opts)
@@ -111,6 +136,16 @@ func main() {
 		allowedPaths = p.Manifest.AllowedPaths
 	}
 
-	agent.New(client, activeSkills, systemPrompt, *debug, allowedPaths).Run()
-}
+	var logger *training.Logger
+	if trainingDir != "" {
+		var logErr error
+		logger, logErr = training.New(trainingDir)
+		if logErr != nil {
+			fmt.Fprintf(os.Stderr, "Warning: could not initialise episode logger: %v\n", logErr)
+		} else {
+			fmt.Fprintf(os.Stderr, "Recording trajectories to: %s/trajectories.jsonl\n", trainingDir)
+		}
+	}
 
+	agent.New(client, activeSkills, systemPrompt, *debug, allowedPaths, logger, activeMeta).Run()
+}

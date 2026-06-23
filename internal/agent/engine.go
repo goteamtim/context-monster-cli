@@ -3,13 +3,17 @@ package agent
 import (
 	"bufio"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/goteamtim/context-monster-cli/internal/ollama"
 	"github.com/goteamtim/context-monster-cli/internal/skills"
+	"github.com/goteamtim/context-monster-cli/internal/training"
 )
 
 // Agent orchestrates the REPL loop and multi-turn tool-calling conversation.
@@ -23,12 +27,18 @@ type Agent struct {
 	// allowedPaths restricts which file/dir paths skills may access.
 	// An empty slice means unrestricted (backward-compatible default).
 	allowedPaths []string
+	// logger is non-nil when trajectory recording is enabled.
+	logger *training.Logger
+	// meta holds static trajectory metadata populated at construction time.
+	meta training.TrajectoryMetadata
 }
 
 // New creates an Agent wired with the given Ollama client and loaded skills.
 // systemPrompt is injected as the first message in the conversation history.
 // allowedPaths restricts file/dir access for all tool calls; nil means unrestricted.
-func New(client *ollama.Client, loadedSkills []skills.Skill, systemPrompt string, verbose bool, allowedPaths []string) *Agent {
+// logger may be nil to disable trajectory recording. meta provides static metadata
+// (model name, persona, context window, etc.) stamped on every recorded trajectory.
+func New(client *ollama.Client, loadedSkills []skills.Skill, systemPrompt string, verbose bool, allowedPaths []string, logger *training.Logger, meta training.TrajectoryMetadata) *Agent {
 	tools := make([]ollama.Tool, len(loadedSkills))
 	for i, s := range loadedSkills {
 		tools[i] = skillToTool(s)
@@ -41,6 +51,8 @@ func New(client *ollama.Client, loadedSkills []skills.Skill, systemPrompt string
 		tools:        tools,
 		verbose:      verbose,
 		allowedPaths: allowedPaths,
+		logger:       logger,
+		meta:         meta,
 		history: []ollama.Message{
 			{Role: "system", Content: systemPrompt},
 		},
@@ -103,12 +115,32 @@ func (a *Agent) Run() {
 			Content: input,
 		})
 
-		reply, err := a.think(context.Background())
+		startedAt := time.Now()
+		reply, messages, inputTokens, outputTokens, err := a.think(context.Background(), input)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "\nError: %v\n\n", err)
 			// Remove the user message so history stays consistent on error
 			a.history = a.history[:len(a.history)-1]
 			continue
+		}
+
+		if a.logger != nil {
+			meta := a.meta
+			meta.ID = training.NewTrajectoryID()
+			meta.InputTokens = inputTokens
+			meta.OutputTokens = outputTokens
+			meta.TotalTokens = inputTokens + outputTokens
+			meta.StartedAt = startedAt
+			meta.CompletedAt = time.Now()
+
+			systemMsg := training.TrajectoryMessage{Role: "system", Content: a.systemPrompt}
+			traj := training.Trajectory{
+				Messages: append([]training.TrajectoryMessage{systemMsg}, messages...),
+				Metadata: meta,
+			}
+			if logErr := a.logger.Append(traj); logErr != nil {
+				fmt.Fprintf(os.Stderr, "[warning] could not write trajectory: %v\n", logErr)
+			}
 		}
 
 		fmt.Printf("\nAssistant: %s\n\n", reply)
@@ -163,16 +195,24 @@ func (a *Agent) handleSlashCommand(input string) (handled bool, keepRunning bool
 
 // think drives the model round-trips until a plain text response is returned.
 // It handles tool calls by executing the matching skill and re-prompting.
-func (a *Agent) think(ctx context.Context) (string, error) {
+// Returns the final reply, the full conversation turn as OpenAI-format messages
+// (user message through final assistant reply), and accumulated token counts.
+func (a *Agent) think(ctx context.Context, task string) (reply string, messages []training.TrajectoryMessage, inputTokens int, outputTokens int, err error) {
+	messages = append(messages, training.TrajectoryMessage{Role: "user", Content: task})
+
 	for {
 		printStatus("Thinking...")
 
-		resp, err := a.client.Chat(ctx, a.history, a.tools)
+		var resp *ollama.ChatResponse
+		resp, err = a.client.Chat(ctx, a.history, a.tools)
 		clearStatus()
 
 		if err != nil {
-			return "", err
+			return "", messages, inputTokens, outputTokens, err
 		}
+
+		inputTokens += resp.PromptEvalCount
+		outputTokens += resp.EvalCount
 
 		msg := resp.Message
 
@@ -195,13 +235,16 @@ func (a *Agent) think(ctx context.Context) (string, error) {
 			if visible == "" {
 				// The model produced only reasoning tokens and no visible text.
 				// Return a fallback so the REPL always prints something useful.
-				return "(no response — the model may still be warming up or the prompt produced only internal reasoning; try rephrasing)", nil
+				const fallback = "(no response — the model may still be warming up or the prompt produced only internal reasoning; try rephrasing)"
+				messages = append(messages, training.TrajectoryMessage{Role: "assistant", Content: fallback})
+				return fallback, messages, inputTokens, outputTokens, nil
 			}
 			a.history = append(a.history, ollama.Message{
 				Role:    "assistant",
 				Content: visible,
 			})
-			return visible, nil
+			messages = append(messages, training.TrajectoryMessage{Role: "assistant", Content: visible})
+			return visible, messages, inputTokens, outputTokens, nil
 		}
 
 		// Append the assistant's tool-call turn to history.
@@ -212,9 +255,30 @@ func (a *Agent) think(ctx context.Context) (string, error) {
 			ToolCalls: msg.ToolCalls,
 		})
 
-		// Execute each requested tool and append results to history.
-		for _, tc := range msg.ToolCalls {
+		// Build the assistant trajectory message with tool calls.
+		// IDs are generated here so the paired tool-result messages can reference them.
+		assistantMsg := training.TrajectoryMessage{
+			Role:             "assistant",
+			Content:          visible,
+			ReasoningContent: msg.Thinking,
+			ToolCalls:        make([]training.TrajectoryToolCall, len(msg.ToolCalls)),
+		}
+		for i, tc := range msg.ToolCalls {
+			assistantMsg.ToolCalls[i] = training.TrajectoryToolCall{
+				ID:   newToolCallID(),
+				Type: "function",
+				Function: training.TrajectoryToolFunction{
+					Name:      tc.Function.Name,
+					Arguments: string(tc.Function.Arguments),
+				},
+			}
+		}
+		messages = append(messages, assistantMsg)
+
+		// Execute each requested tool, append results to history and messages.
+		for i, tc := range msg.ToolCalls {
 			name := tc.Function.Name
+			callID := assistantMsg.ToolCalls[i].ID
 			printStatus(fmt.Sprintf("Running tool: %s...", name))
 
 			skill, found := a.findSkill(name)
@@ -237,10 +301,23 @@ func (a *Agent) think(ctx context.Context) (string, error) {
 				Name:    name,
 				Content: result,
 			})
+			messages = append(messages, training.TrajectoryMessage{
+				Role:       "tool",
+				ToolCallID: callID,
+				Name:       name,
+				Content:    result,
+			})
 		}
 
 		// Loop back to get the synthesis response.
 	}
+}
+
+// newToolCallID returns a short random ID for linking tool calls to their results.
+func newToolCallID() string {
+	b := make([]byte, 6)
+	_, _ = rand.Read(b)
+	return "call_" + hex.EncodeToString(b)
 }
 
 // checkSkillPaths validates each path-type argument declared in the skill's
