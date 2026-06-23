@@ -1,0 +1,16 @@
+{
+  "name": "git_expert",
+  "description": "An expert git research assistant, capable of providing detailed information about a repo using git to navigate.",
+  "model": "qwen3.5:9b",
+  "context_window": 8192,
+  "max_tokens": 2048,
+  "tools": [
+    "wiki_search",
+    "read_file",
+    "write_file",
+    "file_search"
+  ],
+  "allowed_paths": [
+    "./"
+  ]
+}

@@ -11,5 +11,6 @@
     },
     "required": ["path", "content"]
   },
-  "command": "./write"
+  "command": "./write",
+  "path_params": ["path"]
 }

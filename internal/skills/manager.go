@@ -64,7 +64,9 @@ func FindByName(skillList []Skill, name string) (Skill, bool) {
 
 // Execute runs a skill's command with the provided JSON arguments and returns
 // the trimmed stdout. A context deadline of skillTimeout is applied automatically.
-func Execute(skill Skill, argsJSON json.RawMessage) (string, error) {
+// allowedPaths is forwarded as CM_ALLOWED_PATHS so shell-script skills can
+// enforce the same restrictions; pass nil for unrestricted access.
+func Execute(skill Skill, argsJSON json.RawMessage, allowedPaths []string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), skillTimeout)
 	defer cancel()
 
@@ -90,6 +92,9 @@ func Execute(skill Skill, argsJSON json.RawMessage) (string, error) {
 	// Inject the skills root so meta-skills like build_skill can locate it even
 	// under go run, where os.Executable() returns a temp path.
 	cmd.Env = append(os.Environ(), fmt.Sprintf("CM_SKILLS_DIR=%s", filepath.Dir(skill.Dir)))
+	if len(allowedPaths) > 0 {
+		cmd.Env = append(cmd.Env, fmt.Sprintf("CM_ALLOWED_PATHS=%s", strings.Join(allowedPaths, ",")))
+	}
 
 	out, err := cmd.Output()
 	if err != nil {

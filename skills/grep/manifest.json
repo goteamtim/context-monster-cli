@@ -12,5 +12,6 @@
     },
     "required": ["path"]
   },
-  "command": "./grep"
+  "command": "./grep",
+  "path_params": ["path"]
 }
