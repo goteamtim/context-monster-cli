@@ -43,11 +43,11 @@ func main() {
 		activeSkills []skills.Skill
 		systemPrompt string
 		opts         *ollama.Options
-		activeMeta   training.EpisodeMetadata
+		activeMeta   training.TrajectoryMetadata
 		trainingDir  string
 	)
 
-	activeMeta = training.EpisodeMetadata{
+	activeMeta = training.TrajectoryMetadata{
 		Model:    *model,
 		Provider: "ollama",
 	}
@@ -143,7 +143,7 @@ func main() {
 		if logErr != nil {
 			fmt.Fprintf(os.Stderr, "Warning: could not initialise episode logger: %v\n", logErr)
 		} else {
-			fmt.Fprintf(os.Stderr, "Recording episodes to: %s/episodes.jsonl\n", trainingDir)
+			fmt.Fprintf(os.Stderr, "Recording trajectories to: %s/trajectories.jsonl\n", trainingDir)
 		}
 	}
 
