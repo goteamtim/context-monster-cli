@@ -16,9 +16,15 @@ import (
 	"github.com/goteamtim/context-monster-cli/internal/training"
 )
 
+// chatClient is the narrow interface Agent uses to communicate with the model.
+// *ollama.Client satisfies it automatically; tests can provide a stub.
+type chatClient interface {
+	Chat(ctx context.Context, messages []ollama.Message, tools []ollama.Tool) (*ollama.ChatResponse, error)
+}
+
 // Agent orchestrates the REPL loop and multi-turn tool-calling conversation.
 type Agent struct {
-	client       *ollama.Client
+	client       chatClient
 	skills       []skills.Skill
 	systemPrompt string
 	history      []ollama.Message
@@ -38,7 +44,7 @@ type Agent struct {
 // allowedPaths restricts file/dir access for all tool calls; nil means unrestricted.
 // logger may be nil to disable trajectory recording. meta provides static metadata
 // (model name, persona, context window, etc.) stamped on every recorded trajectory.
-func New(client *ollama.Client, loadedSkills []skills.Skill, systemPrompt string, verbose bool, allowedPaths []string, logger *training.Logger, meta training.TrajectoryMetadata) *Agent {
+func New(client chatClient, loadedSkills []skills.Skill, systemPrompt string, verbose bool, allowedPaths []string, logger *training.Logger, meta training.TrajectoryMetadata) *Agent {
 	tools := make([]ollama.Tool, len(loadedSkills))
 	for i, s := range loadedSkills {
 		tools[i] = skillToTool(s)
