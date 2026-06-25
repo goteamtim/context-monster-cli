@@ -3,7 +3,9 @@ package skills
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -16,6 +18,10 @@ func TestMain(m *testing.M) {
 	if os.Getenv("SKILLS_TEST_SLOW") == "1" {
 		time.Sleep(30 * time.Second)
 		os.Exit(0)
+	}
+	if os.Getenv("SKILLS_TEST_FAIL") == "1" {
+		fmt.Fprintln(os.Stderr, "something went wrong")
+		os.Exit(1)
 	}
 	os.Exit(m.Run())
 }
@@ -34,6 +40,25 @@ func TestExecute_cancelledContext(t *testing.T) {
 	_, err := Execute(ctx, skill, json.RawMessage(`{}`), nil)
 	if err == nil {
 		t.Fatal("expected error for pre-cancelled context, got nil")
+	}
+}
+
+// TestExecute_skillStderrIncludedInError verifies that when a skill exits
+// non-zero its stderr output is captured and included in the returned error.
+func TestExecute_skillStderrIncludedInError(t *testing.T) {
+	t.Setenv("SKILLS_TEST_FAIL", "1")
+
+	skill := Skill{
+		Manifest: Manifest{Name: "test", Command: os.Args[0]},
+		Dir:      t.TempDir(),
+	}
+
+	_, err := Execute(context.Background(), skill, json.RawMessage(`{}`), nil)
+	if err == nil {
+		t.Fatal("expected error for failing skill, got nil")
+	}
+	if !strings.Contains(err.Error(), "something went wrong") {
+		t.Fatalf("error %q does not contain expected stderr output", err.Error())
 	}
 }
 

@@ -12,7 +12,7 @@ import (
 func Load(dir string) ([]Persona, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("cannot read personas directory %q: %w", dir, err)
 	}
 	var result []Persona
 	for _, entry := range entries {

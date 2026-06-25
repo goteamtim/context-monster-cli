@@ -3,6 +3,7 @@ package skills
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -101,7 +102,8 @@ func Execute(ctx context.Context, skill Skill, argsJSON json.RawMessage, allowed
 		if ctx.Err() != nil {
 			return "", fmt.Errorf("skill %q timed out after %s", skill.Manifest.Name, skillTimeout)
 		}
-		if exitErr, ok := err.(*exec.ExitError); ok {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
 			return "", fmt.Errorf("skill %q failed: %s", skill.Manifest.Name, strings.TrimSpace(string(exitErr.Stderr)))
 		}
 		return "", fmt.Errorf("skill %q failed: %w", skill.Manifest.Name, err)
