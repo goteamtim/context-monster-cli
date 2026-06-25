@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
 
@@ -147,5 +149,8 @@ func main() {
 		}
 	}
 
-	agent.New(client, activeSkills, systemPrompt, *debug, allowedPaths, logger, activeMeta).Run()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+
+	agent.New(client, activeSkills, systemPrompt, *debug, allowedPaths, logger, activeMeta).Run(ctx)
 }
