@@ -36,7 +36,9 @@ git clone <repo-url> context-monster-cli
 cd context-monster-cli
 
 # 2. Compile the bundled skill binaries (one-time)
-make skills
+go run build.go       # works on all platforms (Windows, Mac, Linux)
+# or: make skills     # if you have make
+
 # 3. Run the agent
 go run ./cmd/agent
 ```
@@ -99,7 +101,8 @@ context-monster-cli/
 ├── personas/
 │   └── dev_journal/         # Example wiki-backed persona
 ├── go.mod
-├── Makefile             # `make skills` builds all bundled skill binaries
+├── build.go             # Cross-platform build script: `go run build.go`
+├── Makefile             # Delegates to build.go; requires `make`
 └── README.md
 ```
 
