@@ -66,8 +66,8 @@ func FindByName(skillList []Skill, name string) (Skill, bool) {
 // the trimmed stdout. A context deadline of skillTimeout is applied automatically.
 // allowedPaths is forwarded as CM_ALLOWED_PATHS so shell-script skills can
 // enforce the same restrictions; pass nil for unrestricted access.
-func Execute(skill Skill, argsJSON json.RawMessage, allowedPaths []string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), skillTimeout)
+func Execute(ctx context.Context, skill Skill, argsJSON json.RawMessage, allowedPaths []string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, skillTimeout)
 	defer cancel()
 
 	parts := strings.Fields(skill.Manifest.Command)

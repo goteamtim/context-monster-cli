@@ -85,7 +85,7 @@ func skillToTool(s skills.Skill) ollama.Tool {
 
 // Run starts the interactive REPL. It reads lines from stdin, drives the
 // multi-turn conversation, and writes assistant replies to stdout.
-func (a *Agent) Run() {
+func (a *Agent) Run(ctx context.Context) {
 	scanner := bufio.NewScanner(os.Stdin)
 	fmt.Println("Context Monster ready. Type your message, or /help for commands.")
 	fmt.Println()
@@ -116,7 +116,7 @@ func (a *Agent) Run() {
 		})
 
 		startedAt := time.Now()
-		reply, messages, inputTokens, outputTokens, err := a.think(context.Background(), input)
+		reply, messages, inputTokens, outputTokens, err := a.think(ctx, input)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "\nError: %v\n\n", err)
 			// Remove the user message so history stays consistent on error
@@ -289,7 +289,7 @@ func (a *Agent) think(ctx context.Context, task string) (reply string, messages 
 				result = pathErr.Error()
 			} else {
 				var toolErr error
-				result, toolErr = skills.Execute(skill, tc.Function.Arguments, a.allowedPaths)
+				result, toolErr = skills.Execute(ctx, skill, tc.Function.Arguments, a.allowedPaths)
 				if toolErr != nil {
 					result = fmt.Sprintf("Error executing tool %q: %v", name, toolErr)
 				}
