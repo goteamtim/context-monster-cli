@@ -50,4 +50,22 @@ func main() {
 		}
 		fmt.Println("built", outPath)
 	}
+
+	agentBin := "context-monster-cli"
+	if runtime.GOOS == "windows" {
+		agentBin += ".exe"
+	}
+	if clean {
+		os.Remove(agentBin)
+		fmt.Println("removed", agentBin)
+		return
+	}
+	cmd := exec.Command("go", "build", "-o", agentBin, "./cmd/agent")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to build agent: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("built", agentBin)
 }

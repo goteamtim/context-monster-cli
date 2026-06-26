@@ -32,15 +32,17 @@ Most AI agent frameworks assume you're willing to send your data to a third-part
 
 ```bash
 # 1. Clone and enter the project
-git clone <repo-url> context-monster-cli
+git clone https://github.com/goteamtim/context-monster-cli
 cd context-monster-cli
 
-# 2. Compile the bundled skill binaries (one-time)
+# 2. Build everything (agent binary + skill binaries)
 go run build.go       # works on all platforms (Windows, Mac, Linux)
 # or: make skills     # if you have make
 
 # 3. Run the agent
-go run ./cmd/agent
+./context-monster-cli           # Linux/Mac
+.\context-monster-cli.exe       # Windows
+# or without building: go run ./cmd/agent
 ```
 
 When the chat opens, use slash commands locally instead of asking the model to interpret control input:
@@ -58,11 +60,14 @@ When the chat opens, use slash commands locally instead of asking the model to i
 | Flag | Default | Description |
 |---|---|---|
 | `--model` | `qwen3.5:4b` | Ollama model to use |
+| `--host` | `http://localhost:11434` | Ollama base URL |
+| `--context-window` | `8192` | Context window size in tokens; used for automatic history compaction |
 | `--skills-dir` | `./skills` | Directory containing skill subdirectories |
 | `--personas-dir` | `./personas` | Directory containing persona subdirectories |
 | `--persona` | _(none)_ | Run a named persona (see [Personas](#personas)) |
 | `--debug` | `false` | Print raw Ollama response details to stderr |
 | `--record` | `false` | Record trajectories to JSONL for training data (see [Trajectory Logging](#trajectory-logging)) |
+| `--version` | — | Print version and exit |
 
 ```bash
 go run ./cmd/agent --model qwen3.5:7b --skills-dir ./skills
@@ -113,8 +118,10 @@ context-monster-cli/
 | `file_search` | `dir`, `ext` | Recursively finds files matching an extension |
 | `grep` | `path`, `pattern`?, `start_line`?, `end_line`?, `context_lines`? | Searches a file for a regex pattern; returns matches with line numbers and optional surrounding context. Reads a line range when no pattern is given. |
 | `read_file` | `path` | Returns the full text contents of a file |
+| `write_file` | `path`, `content`, `overwrite`?, `append`? | Writes or appends text to a file. Requires `overwrite: true` to replace an existing file; `append: true` adds to the end without reading it first. |
 | `list_directory` | `path` | Lists entries in a directory with file/dir labels |
 | `wiki_search` | `wiki_dir`, `query` | Searches a wiki's `index.md` by keyword score, returns top matching pages in one call |
+| `build_skill` | `name`, `description`, `parameters`, `language`, `code` | Scaffolds a new skill at runtime — creates the directory, `manifest.json`, and source file, and compiles Go skills automatically. Restart the agent to load the result. |
 
 ## Bundled Personas
 
@@ -205,7 +212,7 @@ Create a subdirectory under `personas/` with a `persona.json`:
 | `description` | yes | Human-readable description |
 | `system_prompt` | yes* | Injected as the first system message. Overridden by `AGENTS.md` if present |
 | `model` | no | Overrides `--model`; omit to use the flag value |
-| `context_window` | no | Sets Ollama's `num_ctx` option |
+| `context_window` | no | Sets Ollama's `num_ctx` option and overrides `--context-window` for history compaction (see [Context Window Management](#context-window-management)) |
 | `max_tokens` | no | Sets Ollama's `num_predict` option |
 | `tools` | yes | List of skill names the persona can call |
 | `allowed_paths` | no | List of file/directory patterns the persona may access (see [File Access Control](#file-access-control)) |
@@ -476,6 +483,25 @@ A persona that is only allowed to read files in `./src` and `./tests`, and write
 ```
 
 If the LLM tries to read a file outside those directories — say `../secrets/.env` or `/etc/passwd` — the attempt is blocked before any subprocess runs and the error is returned to the model.
+
+---
+
+## Context Window Management
+
+By default the agent accumulates the full conversation history for the session. In long sessions this will eventually approach the model's context limit, causing Ollama to silently truncate the oldest turns or return degraded results.
+
+The agent manages history size automatically using a **sliding window**. After each model response, if the reported input token count exceeds 80% of the context window, the agent drops the oldest non-system messages until estimated usage falls back to ~70%. The system prompt is always kept — it is pinned at the start of history and never dropped.
+
+The context window size is determined in this priority order:
+1. The `context_window` field in the active persona's `persona.json`
+2. The `--context-window` CLI flag (default: `8192`)
+
+A note is printed to stderr when compaction fires:
+```
+[compaction] context at 6820/8192 tokens — dropped 4 old messages
+```
+
+Use `/clear` at any time to reset history manually.
 
 ---
 

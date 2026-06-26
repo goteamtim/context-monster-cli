@@ -111,3 +111,105 @@ func TestThink_unknownToolCallCyclesBackForSynthesis(t *testing.T) {
 		t.Fatalf("expected 2 Chat calls, got %d", stub.calls)
 	}
 }
+
+// makeHistory returns a history slice with a pinned system message followed by
+// n additional user messages, simulating a long conversation.
+func makeHistory(n int) []ollama.Message {
+	msgs := make([]ollama.Message, n+1)
+	msgs[0] = ollama.Message{Role: "system", Content: "system prompt"}
+	for i := 1; i <= n; i++ {
+		msgs[i] = ollama.Message{Role: "user", Content: fmt.Sprintf("message %d", i)}
+	}
+	return msgs
+}
+
+func TestMaybeCompact_noopWithoutContextWindow(t *testing.T) {
+	a := newTestAgent(nil)
+	a.meta.ContextWindow = 0
+	a.history = makeHistory(10)
+	a.maybeCompact(9000)
+	if len(a.history) != 11 {
+		t.Fatalf("expected history unchanged (11 messages), got %d", len(a.history))
+	}
+}
+
+func TestMaybeCompact_noopUnderThreshold(t *testing.T) {
+	a := newTestAgent(nil)
+	a.meta.ContextWindow = 1000
+	a.history = makeHistory(10)
+	a.maybeCompact(750) // 75% — under the 80% threshold
+	if len(a.history) != 11 {
+		t.Fatalf("expected no compaction at 75%% usage, got %d messages", len(a.history))
+	}
+}
+
+func TestMaybeCompact_dropsOldestMessages(t *testing.T) {
+	a := newTestAgent(nil)
+	a.meta.ContextWindow = 1000
+	a.history = makeHistory(10)
+	a.maybeCompact(900) // 90% — over threshold
+	if len(a.history) >= 11 {
+		t.Fatalf("expected messages to be dropped, history still has %d messages", len(a.history))
+	}
+	if a.history[0].Role != "system" {
+		t.Fatalf("system message was not kept at index 0, got role %q", a.history[0].Role)
+	}
+}
+
+func TestMaybeCompact_preservesSystemAndMinimum(t *testing.T) {
+	a := newTestAgent(nil)
+	a.meta.ContextWindow = 100
+	// Only 2 messages total — should not drop anything (would leave just system).
+	a.history = makeHistory(1) // system + 1 message
+	a.maybeCompact(100)
+	if len(a.history) != 2 {
+		t.Fatalf("expected history unchanged at minimum size, got %d messages", len(a.history))
+	}
+}
+
+func TestMaybeCompact_heavyUsageDropsEnoughToReachTarget(t *testing.T) {
+	a := newTestAgent(nil)
+	a.meta.ContextWindow = 1000
+	a.history = makeHistory(20) // system + 20 messages
+	a.maybeCompact(950)         // 95% used — should drop to ~70%
+
+	// After compaction, kept messages × avgTokensPerMessage should be ≤ target.
+	// We can't verify tokens directly, but we can check a meaningful number were dropped.
+	if len(a.history) >= 21 {
+		t.Fatalf("expected significant compaction, got %d messages (no drop)", len(a.history))
+	}
+	if a.history[0].Role != "system" {
+		t.Fatalf("system message must remain at index 0")
+	}
+}
+
+// TestThink_triggersCompactionOnHighUsage verifies that think() calls
+// maybeCompact after a response whose PromptEvalCount exceeds the threshold,
+// so the history is shorter after the call than it would be without compaction.
+func TestThink_triggersCompactionOnHighUsage(t *testing.T) {
+	stub := &stubClient{
+		responses: []*ollama.ChatResponse{
+			{
+				Message:         ollama.Message{Role: "assistant", Content: "reply"},
+				PromptEvalCount: 900, // 90% of contextWindow=1000 → triggers compaction
+			},
+		},
+	}
+	a := newTestAgent(stub)
+	a.meta.ContextWindow = 1000
+	// Seed history with enough turns to give compaction something to drop.
+	a.history = makeHistory(10) // system + 10 messages = 11 total
+
+	_, _, _, _, err := a.think(context.Background(), "hello")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Without compaction: 11 (existing) + 1 (assistant reply from think) = 12.
+	// With compaction some messages are dropped, so total must be < 12.
+	if len(a.history) >= 12 {
+		t.Fatalf("expected compaction to reduce history, got %d messages", len(a.history))
+	}
+	if a.history[0].Role != "system" {
+		t.Fatalf("system message must remain pinned at index 0")
+	}
+}

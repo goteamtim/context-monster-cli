@@ -20,14 +20,24 @@ const defaultSystemPrompt = "You are a helpful assistant with access to local to
 	"Only call a tool when you genuinely need to access the filesystem to answer the question. " +
 	"For general knowledge, reasoning, or questions you can answer directly, respond with plain text and do not invoke any tools."
 
+const version = "0.1.0"
+
 func main() {
 	model := flag.String("model", "qwen3.5:4b", "Ollama model to use")
+	host := flag.String("host", "http://localhost:11434", "Ollama base URL")
+	contextWindow := flag.Int("context-window", 8192, "Context window size in tokens; used for automatic history compaction")
 	skillsDir := flag.String("skills-dir", "./skills", "Directory containing skill subdirectories")
 	personasDir := flag.String("personas-dir", "./personas", "Directory containing persona subdirectories")
 	personaName := flag.String("persona", "", "Run a named persona by name")
 	debug := flag.Bool("debug", false, "Print raw Ollama response details to stderr")
 	record := flag.Bool("record", false, "Record episodes to training/episodes.jsonl for the active persona (or ./training/ if no persona)")
+	ver := flag.Bool("version", false, "Print version and exit")
 	flag.Parse()
+
+	if *ver {
+		fmt.Println("context-monster-cli v" + version)
+		return
+	}
 
 	allSkills, err := skills.Load(*skillsDir)
 	if err != nil {
@@ -50,8 +60,9 @@ func main() {
 	)
 
 	activeMeta = training.TrajectoryMetadata{
-		Model:    *model,
-		Provider: "ollama",
+		Model:         *model,
+		Provider:      "ollama",
+		ContextWindow: *contextWindow,
 	}
 
 	if *personaName != "" {
@@ -92,7 +103,9 @@ func main() {
 		// Populate episode metadata with persona-level values.
 		activeMeta.Model = *model
 		activeMeta.PersonaName = cfg.Name
-		activeMeta.ContextWindow = cfg.ContextWindow
+		if cfg.ContextWindow > 0 {
+			activeMeta.ContextWindow = cfg.ContextWindow
+		}
 
 		// Enable recording if the --record flag is set or the persona opts in.
 		if *record || cfg.Record {
@@ -130,7 +143,7 @@ func main() {
 		}
 	}
 
-	client := ollama.New("http://localhost:11434", *model, opts)
+	client := ollama.New(*host, *model, opts)
 
 	var allowedPaths []string
 	if *personaName != "" {

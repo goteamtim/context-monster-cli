@@ -219,6 +219,7 @@ func (a *Agent) think(ctx context.Context, task string) (reply string, messages 
 
 		inputTokens += resp.PromptEvalCount
 		outputTokens += resp.EvalCount
+		a.maybeCompact(resp.PromptEvalCount)
 
 		msg := resp.Message
 
@@ -353,6 +354,48 @@ func (a *Agent) checkSkillPaths(skill skills.Skill, argsJSON json.RawMessage) er
 		}
 	}
 	return nil
+}
+
+const (
+	compactThreshold = 0.80 // compact when usage crosses this fraction of contextWindow
+	compactTarget    = 0.70 // aim to drop enough messages to reach this fraction
+)
+
+// maybeCompact trims the oldest non-system messages from history when token
+// usage crosses compactThreshold of the configured context window. It estimates
+// how many messages to drop by dividing the excess tokens by the average
+// tokens-per-message observed in this response.
+//
+// If contextWindow is zero (not configured) this is a no-op.
+func (a *Agent) maybeCompact(usedTokens int) {
+	if a.meta.ContextWindow <= 0 {
+		return
+	}
+	limit := a.meta.ContextWindow
+	if usedTokens < int(float64(limit)*compactThreshold) {
+		return
+	}
+	// history[0] is the system message — always keep it.
+	n := len(a.history)
+	if n <= 2 {
+		return
+	}
+	avgPerMsg := usedTokens / n
+	if avgPerMsg == 0 {
+		avgPerMsg = 1
+	}
+	tokensToFree := usedTokens - int(float64(limit)*compactTarget)
+	toDrop := (tokensToFree + avgPerMsg - 1) / avgPerMsg // ceiling division
+	if toDrop < 1 {
+		toDrop = 1
+	}
+	maxDrop := n - 2 // keep system + at least one other message
+	if toDrop > maxDrop {
+		toDrop = maxDrop
+	}
+	a.history = append(a.history[:1], a.history[1+toDrop:]...)
+	fmt.Fprintf(os.Stderr, "[compaction] context at %d/%d tokens — dropped %d old messages\n",
+		usedTokens, limit, toDrop)
 }
 
 // findSkill returns the Skill whose manifest name matches, or false.
