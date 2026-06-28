@@ -1,4 +1,4 @@
-.PHONY: skills clean
+.PHONY: skills clean test coverage
 
 skills:
 	cd skills/build_skill    && go build -o build  build.go
@@ -8,6 +8,14 @@ skills:
 	cd skills/read_file      && go build -o read   read.go
 	cd skills/wiki_search    && go build -o search search.go
 	cd skills/write_file     && go build -o write  write.go
+
+test:
+	go test ./...
+
+coverage:
+	go test -coverprofile=coverage.out ./...
+	go tool cover -html=coverage.out -o coverage.html
+	@echo "Coverage report: coverage.html"
 
 clean:
 	rm -f skills/build_skill/build
